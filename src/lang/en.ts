@@ -1,6 +1,6 @@
 export const PWM_TEXT = {
-  OPEN_MANAGER: 'Open password manager',
-  MODAL_TITLE: 'Password manager',
+  OPEN_MANAGER: 'Open credential manager',
+  MODAL_TITLE: 'Credential manager',
   SETTINGS_TITLE: 'General settings',
   MODAL_SETTINGS_TITLE: 'Interface settings',
   MODAL_WIDTH_SETTING: 'Manager width',
@@ -17,7 +17,7 @@ export const PWM_TEXT = {
   ENCRYPTION_ENABLED_SETTING: 'Enable encryption password',
   ENCRYPTION_ENABLED_SETTING_DESC: 'When enabled, the entire data.json will be encrypted with the encryption password. Disabled by default.',
   ENCRYPTION_UNLOCK_MODE_SETTING: 'Recheck mode',
-  ENCRYPTION_UNLOCK_MODE_SETTING_DESC: 'Controls when the encryption password must be re-verified when opening the password manager.',
+  ENCRYPTION_UNLOCK_MODE_SETTING_DESC: 'Controls when the encryption password must be re-verified when opening the credential manager.',
   ENCRYPTION_UNLOCK_MODE_SESSION: 'Verify only once after launch',
   ENCRYPTION_UNLOCK_MODE_INTERVAL: 'Verify after a fixed interval',
   ENCRYPTION_UNLOCK_MODE_ALWAYS: 'Verify every time it opens',

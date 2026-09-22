@@ -1,14 +1,14 @@
-# Obsidian Password Manager
+# Obsidian Credential Manager
 
 [English README](./README.md)
 
 > 在 Obsidian 中轻量管理账号、密码与链接，支持加密、备份、回收站与导入导出。
 
-![Obsidian Password Manager](./assets/demo.png)
+![Obsidian Credential Manager](./assets/demo.png)
 
 ## 📖 简介
 
-**Obsidian Password Manager** 是一款用于 Obsidian 的轻量密码管理插件，适合在笔记库中集中保存和整理日常使用的账号密码信息。
+**Obsidian Credential Manager** 是一款用于 Obsidian 的轻量凭据管理插件，适合在笔记库中集中保存和整理日常使用的账号密码信息。
 
 插件使用 JSON 结构存储数据，并提供三栏管理界面，便于在分组、条目和详情之间快速切换。对于常见的网站账号、软件登录信息、简单密钥记录等场景，这种方式更轻量，也更方便和笔记一起管理。
 
@@ -27,12 +27,12 @@
 ### 手动安装（BRAT）
 
 1. 安装 [BRAT](https://github.com/TfTHacker/obsidian-brat) 插件。
-2. 在 BRAT 设置中添加：`https://github.com/yourusername/obsidian-password-manager`。
+2. 在 BRAT 设置中添加：`https://github.com/yourusername/obsidian-credential-manager`。
 3. 启用插件。
 
 ### 本地手动安装
 
-- 下载最新 `main.js`, `manifest.json`, `styles.css` 到库目录 `.obsidian/plugins/obsidian-password-manager/`。
+- 下载最新 `main.js`, `manifest.json`, `styles.css` 到库目录 `.obsidian/plugins/obsidian-credential-manager/`。
 - 重启 Obsidian 并启用插件。
 
 ## 🔒 安全说明
@@ -47,7 +47,7 @@
 
 ## 📝 开发与贡献
 
-- 项目地址：[https://github.com/yourusername/obsidian-password-manager](https://github.com/yourusername/obsidian-password-manager)
+- 项目地址：[https://github.com/yourusername/obsidian-credential-manager](https://github.com/yourusername/obsidian-credential-manager)
 - 欢迎提交 Issue、PR 或建议。
 - 本地开发：
 
@@ -59,7 +59,9 @@ npm run dev
 
 ## 👏 鸣谢
 
-Developed by [PandaNocturne](https://github.com/PandaNocturne).
+Developed by:
+- [PandaNocturne](https://github.com/PandaNocturne)
+- [Pinei](https://github.com/pinei)
 
 ## 📄 许可证
 

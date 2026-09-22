@@ -1,10 +1,10 @@
 {
-	"id": "password-manager",
-	"name": "Password Manager",
+	"id": "credential-manager",
+	"name": "Credential Manager",
 	"version": "1.0.12",
 	"minAppVersion": "1.8.7",
-	"description": "A lightweight local password manager with encryption, backup, trash, and import/export support.",
-	"author": "PandaNocturne",
-	"authorUrl": "https://github.com/PandaNocturne",
+	"description": "A lightweight local credential manager with encryption, backup, trash, and import/export support.",
+	"author": "Pinei",
+	"authorUrl": "https://github.com/pinei",
 	"isDesktopOnly": true
 }

@@ -1,6 +1,6 @@
 export const PWM_TEXT = {
-  OPEN_MANAGER: '打开密码管理器',
-  MODAL_TITLE: '密码管理器',
+  OPEN_MANAGER: '打开凭据管理器',
+  MODAL_TITLE: '凭据管理器',
   SETTINGS_TITLE: '常规设置',
   MODAL_SETTINGS_TITLE: '界面设置',
   MODAL_WIDTH_SETTING: '管理器宽度',
@@ -17,7 +17,7 @@ export const PWM_TEXT = {
   ENCRYPTION_ENABLED_SETTING: '启用加密密码',
   ENCRYPTION_ENABLED_SETTING_DESC: '启用后会使用加密密码对整个 data.json 进行加密。默认关闭。',
   ENCRYPTION_UNLOCK_MODE_SETTING: '重新检验方式',
-  ENCRYPTION_UNLOCK_MODE_SETTING_DESC: '控制打开密码管理器时需要重新验证加密密码的时机。',
+  ENCRYPTION_UNLOCK_MODE_SETTING_DESC: '控制打开凭据管理器时需要重新验证加密密码的时机。',
   ENCRYPTION_UNLOCK_MODE_SESSION: '启动后仅校验一次',
   ENCRYPTION_UNLOCK_MODE_INTERVAL: '固定时间后校验',
   ENCRYPTION_UNLOCK_MODE_ALWAYS: '每次打开都校验',

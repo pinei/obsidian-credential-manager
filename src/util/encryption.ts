@@ -8,7 +8,7 @@ const KEY_LENGTH = 256;
 const ITERATIONS = 250000;
 const IV_LENGTH = 12;
 const SALT_LENGTH = 16;
-const PASSWORD_VERIFIER_TEXT = 'obsidian-password-manager:password-verifier';
+const PASSWORD_VERIFIER_TEXT = 'obsidian-credential-manager:password-verifier';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
