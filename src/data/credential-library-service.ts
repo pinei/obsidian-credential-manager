@@ -293,6 +293,10 @@ function createCredentialData(type: CredentialType): Record<string, string> {
       return { provider: '', accountName: '', accessKeyId: '', secretAccessKey: '' };
     case 'webhook':
       return { name: '', url: '', method: 'POST', signingSecret: '' };
+    case 'personal-id':
+      return { documentType: '', idNumber: '', fullName: '', dateOfBirth: '', issueDate: '', issuingCountry: '', issuingAuthority: '' };
+    case 'payment-card':
+      return { cardBrand: '', cardholderName: '', cardNumber: '', issuingBank: '', cvv: '', pin: '', billingAddress: '' };
     case 'generic-secret':
       return { fieldName: '', value: '' };
     case 'login':

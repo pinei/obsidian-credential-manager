@@ -25,6 +25,8 @@ export type CredentialType =
   | 'ssh-key'
   | 'cloud-credentials'
   | 'webhook'
+  | 'personal-id'
+  | 'payment-card'
   | 'generic-secret';
 
 export type CredentialData = Record<string, string>;

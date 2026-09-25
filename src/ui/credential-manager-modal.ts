@@ -64,6 +64,12 @@ type CredentialSummaryField =
   | 'accountName'
   | 'name'
   | 'method'
+  | 'documentType'
+  | 'fullName'
+  | 'issuingCountry'
+  | 'cardBrand'
+  | 'cardholderName'
+  | 'issuingBank'
   | 'fieldName';
 const CREDENTIAL_TYPES: Array<{ value: CredentialType; label: string }> = [
   { value: 'login', label: 'Login' },
@@ -74,6 +80,8 @@ const CREDENTIAL_TYPES: Array<{ value: CredentialType; label: string }> = [
   { value: 'ssh-key', label: 'SSH key' },
   { value: 'cloud-credentials', label: 'Cloud credentials' },
   { value: 'webhook', label: 'Webhook' },
+  { value: 'personal-id', label: 'Personal ID' },
+  { value: 'payment-card', label: 'Credit/debit card' },
   { value: 'generic-secret', label: 'Generic secret' },
 ];
 const CREDENTIAL_TYPE_ICONS: Record<CredentialType, string> = {
@@ -85,6 +93,8 @@ const CREDENTIAL_TYPE_ICONS: Record<CredentialType, string> = {
   'ssh-key': 'terminal',
   'cloud-credentials': 'cloud',
   webhook: 'webhook',
+  'personal-id': 'contact',
+  'payment-card': 'credit-card',
   'generic-secret': 'lock-keyhole',
 };
 const CREDENTIAL_SUMMARY_FIELDS: Record<CredentialType, CredentialSummaryField[]> = {
@@ -96,6 +106,8 @@ const CREDENTIAL_SUMMARY_FIELDS: Record<CredentialType, CredentialSummaryField[]
   'ssh-key': ['keyName', 'host', 'username'],
   'cloud-credentials': ['provider', 'accountName'],
   webhook: ['name', 'method'],
+  'personal-id': ['documentType', 'fullName', 'issuingCountry'],
+  'payment-card': ['cardBrand', 'cardholderName', 'issuingBank'],
   'generic-secret': ['fieldName'],
 };
 type DetailFocusTarget = {
@@ -1264,7 +1276,9 @@ export class CredentialManagerModal extends Modal {
     Object.entries(this.detailsDraft.data).forEach(([key, value]) => {
       const label = this.getCredentialFieldLabel(key);
       const isSecret = this.isSensitiveCredentialField(key);
-      const isMultiline = this.detailsDraft.type === 'generic-secret' && key === 'value';
+      const isSecretMultiline = this.detailsDraft.type === 'generic-secret' && key === 'value';
+      const isBillingAddress = this.detailsDraft.type === 'payment-card' && key === 'billingAddress';
+      const isDate = key === 'dateOfBirth' || key === 'issueDate';
       const copyAction: PwmFieldAction = {
         icon: 'copy',
         label: PWM_TEXT.COPY_PASSWORD,
@@ -1274,7 +1288,7 @@ export class CredentialManagerModal extends Modal {
         },
       };
       // createSecretField already renders its own reveal toggle; only the textarea variant needs one here.
-      const actions: PwmFieldAction[] = isMultiline
+      const actions: PwmFieldAction[] = isSecretMultiline
         ? [
           {
             icon: 'eye',
@@ -1291,8 +1305,12 @@ export class CredentialManagerModal extends Modal {
         : isSecret
           ? [copyAction]
           : [];
-      const input = isMultiline
+      const input = isSecretMultiline
         ? this.createSecretTextareaField(container, label, value, actions)
+        : isBillingAddress
+          ? this.createTextareaField(container, label, value)
+          : isDate
+            ? this.createDateField(container, label, value)
         : isSecret
           ? this.createSecretField(container, label, value, actions)
           : this.createTextField(container, label, value, [], { leadingIcon: 'text-cursor-input' });
@@ -1324,6 +1342,20 @@ export class CredentialManagerModal extends Modal {
       accountName: PWM_TEXT.ACCOUNT_NAME,
       name: PWM_TEXT.WEBHOOK_NAME,
       method: PWM_TEXT.METHOD,
+      documentType: PWM_TEXT.DOCUMENT_TYPE,
+      idNumber: PWM_TEXT.ID_NUMBER,
+      fullName: PWM_TEXT.FULL_NAME,
+      dateOfBirth: PWM_TEXT.DATE_OF_BIRTH,
+      issueDate: PWM_TEXT.ISSUE_DATE,
+      issuingCountry: PWM_TEXT.ISSUING_COUNTRY,
+      issuingAuthority: PWM_TEXT.ISSUING_AUTHORITY,
+      cardBrand: PWM_TEXT.CARD_BRAND,
+      cardholderName: PWM_TEXT.CARDHOLDER_NAME,
+      cardNumber: PWM_TEXT.CARD_NUMBER,
+      issuingBank: PWM_TEXT.ISSUING_BANK,
+      cvv: PWM_TEXT.CVV,
+      pin: PWM_TEXT.PIN,
+      billingAddress: PWM_TEXT.BILLING_ADDRESS,
       fieldName: PWM_TEXT.FIELD_NAME,
       value: PWM_TEXT.VALUE,
     };
@@ -1331,7 +1363,7 @@ export class CredentialManagerModal extends Modal {
   }
 
   private isSensitiveCredentialField(key: string) {
-    return /password|clientSecret|tokenValue|secretAccessKey|serviceAccountKey|signingSecret|privateKey|passphrase|certificatePem|value/i.test(key);
+    return /password|clientSecret|tokenValue|secretAccessKey|serviceAccountKey|signingSecret|privateKey|passphrase|certificatePem|idNumber|cardNumber|cvv|pin|value/i.test(key);
   }
 
   private renderUrlFields(container: HTMLElement) {
@@ -1516,11 +1548,8 @@ export class CredentialManagerModal extends Modal {
   }
 
   private renderItemMeta(container: HTMLElement, item: CredentialItem) {
-    CREDENTIAL_SUMMARY_FIELDS[item.type].forEach((key) => {
-      const value = (item.type === 'login' && key === 'username' ? item.username : item.data[key])?.trim();
-      if (value) {
-        container.createDiv({ text: `${this.getCredentialFieldLabel(key)}：${value}`, cls: 'pwm-item-subtitle' });
-      }
+    this.getCredentialSummaryEntries(item).forEach(({ key, value }) => {
+      container.createDiv({ text: `${this.getCredentialFieldLabel(key)}：${value}`, cls: 'pwm-item-subtitle' });
     });
 
     const primaryUrl = (item.urls[0] || item.data.url || '').trim();
@@ -1545,6 +1574,17 @@ export class CredentialManagerModal extends Modal {
         });
       }
     }
+  }
+
+  private getCredentialSummaryEntries(item: CredentialItem) {
+    const entries: Array<{ key: CredentialSummaryField; value: string }> = [];
+    CREDENTIAL_SUMMARY_FIELDS[item.type].forEach((key) => {
+      const value = (item.type === 'login' && key === 'username' ? item.username : item.data[key])?.trim();
+      if (value) {
+        entries.push({ key, value });
+      }
+    });
+    return entries;
   }
 
   private getCredentialTypeLabel(type: CredentialType) {
@@ -1630,6 +1670,14 @@ export class CredentialManagerModal extends Modal {
     const textarea = this.createTextareaField(container, label, value, actions);
     textarea.addClasses(['pwm-secret-textarea', 'pwm-secret-textarea-hidden']);
     return textarea;
+  }
+
+  private createDateField(container: HTMLElement, label: string, value: string) {
+    const field = container.createDiv({ cls: 'pwm-field' });
+    field.createEl('label', { text: label });
+    const input = field.createEl('input', { type: 'date', value });
+    this.bindDetailFocus(input);
+    return input;
   }
 
   private createTextareaField(
@@ -2384,9 +2432,10 @@ export class CredentialManagerModal extends Modal {
 
   private matchesItemKeyword(item: CredentialItem | DeletedCredentialItem, keywords: string[]) {
     const groupNames = this.getItemGroups(item).map((group) => group.name);
+    const summaryValues = this.getCredentialSummaryEntries(item).map(({ value }) => value);
     const trashDate = this.isTrashMode() && 'deletedAt' in item ? this.getTrashDateKey(item) : '';
     return matchesAnyFieldKeywords(
-      [item.title, this.getCredentialTypeLabel(item.type), item.username, item.urls.join(' '), item.notes, ...groupNames, trashDate],
+      [item.title, this.getCredentialTypeLabel(item.type), ...summaryValues, item.urls.join(' '), item.notes, ...groupNames, trashDate],
       keywords,
     );
   }

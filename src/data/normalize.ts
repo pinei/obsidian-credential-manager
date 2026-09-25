@@ -167,6 +167,8 @@ export function normalizeCredentialType(value: unknown): CredentialType {
     'ssh-key',
     'cloud-credentials',
     'webhook',
+    'personal-id',
+    'payment-card',
     'generic-secret',
   ];
   return types.includes(value as CredentialType) ? value as CredentialType : 'login';
