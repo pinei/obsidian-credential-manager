@@ -1,10 +1,10 @@
 import { PWM_TEXT } from '../lang';
-import { DEFAULT_PASSWORD_MANAGER_SETTINGS } from '../settings';
-import type { PasswordManagerData } from '../util/types';
+import { DEFAULT_CREDENTIAL_MANAGER_SETTINGS } from '../settings';
+import type { CredentialManagerData } from '../util/types';
 
 const now = Date.now();
 
-export const DEFAULT_DATA: PasswordManagerData = {
+export const DEFAULT_DATA: CredentialManagerData = {
   groups: [
     {
       id: 'default-group',
@@ -18,10 +18,13 @@ export const DEFAULT_DATA: PasswordManagerData = {
       id: 'default-item',
       groupIds: ['default-group'],
       title: PWM_TEXT.DEFAULT_ITEM_TITLE,
+      type: 'login',
+      data: { username: PWM_TEXT.DEFAULT_ITEM_USERNAME, password: 'password' },
       username: PWM_TEXT.DEFAULT_ITEM_USERNAME,
       password: 'password',
       urls: [],
       notes: '',
+      expiresAt: undefined,
       pinned: false,
       createdAt: now,
       updatedAt: now,
@@ -38,5 +41,5 @@ export const DEFAULT_DATA: PasswordManagerData = {
     groupColumnWidth: 220,
     itemColumnWidth: 320,
   },
-  settings: DEFAULT_PASSWORD_MANAGER_SETTINGS,
+  settings: DEFAULT_CREDENTIAL_MANAGER_SETTINGS,
 };

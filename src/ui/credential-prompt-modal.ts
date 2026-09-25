@@ -10,26 +10,26 @@ const removeFromTabOrder = (element: HTMLElement | null) => {
   element.tabIndex = -1;
 };
 
-export interface PasswordPromptField {
+export interface CredentialPromptField {
   key: string;
   label: string;
   placeholder?: string;
   value?: string;
 }
 
-interface PasswordPromptOptions {
+interface CredentialPromptOptions {
   title: string;
-  fields: PasswordPromptField[];
+  fields: CredentialPromptField[];
   confirmText: string;
   cancelText: string;
 }
 
-export class PasswordPromptModal extends Modal {
+export class CredentialPromptModal extends Modal {
   private readonly values = new Map<string, string>();
   private resolver!: (value: Record<string, string> | null) => void;
   private isResolved = false;
 
-  constructor(app: App, private readonly options: PasswordPromptOptions) {
+  constructor(app: App, private readonly options: CredentialPromptOptions) {
     super(app);
   }
 
@@ -38,9 +38,9 @@ export class PasswordPromptModal extends Modal {
     this.finish(result);
   }
 
-  static open(app: App, options: PasswordPromptOptions) {
+  static open(app: App, options: CredentialPromptOptions) {
     return new Promise<Record<string, string> | null>((resolve) => {
-      const modal = new PasswordPromptModal(app, options);
+      const modal = new CredentialPromptModal(app, options);
       modal.resolver = resolve;
       modal.open();
     });

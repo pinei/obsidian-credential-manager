@@ -1,7 +1,7 @@
 import { PWM_TEXT } from '../lang';
-import type { PasswordItem } from './types';
+import type { CredentialItem } from './types';
 
-export function getNextDuplicatedTitle(items: PasswordItem[], title: string) {
+export function getNextDuplicatedTitle(items: CredentialItem[], title: string) {
   const match = title.match(/^(.*?)(?:\s*\((\d+)\))?$/);
   const baseTitle = match?.[1]?.trim() || title.trim() || PWM_TEXT.UNTITLED_ITEM;
   const escapedBaseTitle = escapeRegExp(baseTitle);
@@ -20,8 +20,8 @@ export function getNextDuplicatedTitle(items: PasswordItem[], title: string) {
   });
 
   return `${baseTitle} (${maxIndex + 1})`;
-}
+  }
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+  }

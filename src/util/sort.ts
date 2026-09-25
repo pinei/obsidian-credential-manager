@@ -1,6 +1,6 @@
-import type { DeletedPasswordItem, PasswordGroup, PasswordItem, PwmSortMode } from './types';
+import type { DeletedCredentialItem, CredentialGroup, CredentialItem, PwmSortMode } from './types';
 
-export function sortGroups(groups: PasswordGroup[], items: PasswordItem[], mode: PwmSortMode) {
+export function sortGroups(groups: CredentialGroup[], items: CredentialItem[], mode: PwmSortMode) {
   const itemCountByGroupId = new Map<string, number>();
   items.forEach((item) => {
     item.groupIds.forEach((groupId) => {
@@ -19,14 +19,14 @@ export function sortGroups(groups: PasswordGroup[], items: PasswordItem[], mode:
   );
 }
 
-export function sortItems(items: PasswordItem[], mode: PwmSortMode) {
+export function sortItems(items: CredentialItem[], mode: PwmSortMode) {
   return [...items].sort((left, right) =>
     comparePinned(left.pinned, right.pinned)
     || compareItemBySortMode(left, right, mode),
   );
 }
 
-export function sortDeletedItems(items: DeletedPasswordItem[], mode: PwmSortMode) {
+export function sortDeletedItems(items: DeletedCredentialItem[], mode: PwmSortMode) {
   return [...items].sort((left, right) => compareItemBySortMode(left, right, mode));
 }
 
@@ -35,8 +35,8 @@ function comparePinned(leftPinned: boolean, rightPinned: boolean) {
 }
 
 function compareGroupBySortMode(
-  left: PasswordGroup,
-  right: PasswordGroup,
+  left: CredentialGroup,
+  right: CredentialGroup,
   leftItemCount: number,
   rightItemCount: number,
   mode: PwmSortMode,
@@ -55,7 +55,7 @@ function compareGroupBySortMode(
   }
 }
 
-function compareItemBySortMode(left: PasswordItem | DeletedPasswordItem, right: PasswordItem | DeletedPasswordItem, mode: PwmSortMode) {
+function compareItemBySortMode(left: CredentialItem | DeletedCredentialItem, right: CredentialItem | DeletedCredentialItem, mode: PwmSortMode) {
   switch (mode) {
     case 'updated-asc':
       return left.updatedAt - right.updatedAt
@@ -63,6 +63,14 @@ function compareItemBySortMode(left: PasswordItem | DeletedPasswordItem, right: 
         || left.order - right.order;
     case 'updated-desc':
       return right.updatedAt - left.updatedAt
+        || left.title.localeCompare(right.title, 'zh-Hans-CN')
+        || left.order - right.order;
+    case 'expiration-asc':
+      return compareExpiration(left.expiresAt, right.expiresAt)
+        || left.title.localeCompare(right.title, 'zh-Hans-CN')
+        || left.order - right.order;
+    case 'expiration-desc':
+      return compareExpiration(right.expiresAt, left.expiresAt)
         || left.title.localeCompare(right.title, 'zh-Hans-CN')
         || left.order - right.order;
     case 'deleted-asc':
@@ -78,7 +86,7 @@ function compareItemBySortMode(left: PasswordItem | DeletedPasswordItem, right: 
   }
 }
 
-function compareDeletedAt(left: PasswordItem | DeletedPasswordItem, right: PasswordItem | DeletedPasswordItem) {
+function compareDeletedAt(left: CredentialItem | DeletedCredentialItem, right: CredentialItem | DeletedCredentialItem) {
   return ('deletedAt' in left ? left.deletedAt : 0) - ('deletedAt' in right ? right.deletedAt : 0);
 }
 
@@ -104,4 +112,16 @@ export function compareBySortMode(
     default:
       return leftOrder - rightOrder;
   }
+}
+function compareExpiration(left: string | undefined, right: string | undefined) {
+  if (!left && !right) {
+    return 0;
+  }
+  if (!left) {
+    return 1;
+  }
+  if (!right) {
+    return -1;
+  }
+  return left.localeCompare(right);
 }

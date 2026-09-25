@@ -1,18 +1,19 @@
 import { PWM_TEXT } from '../lang';
-import { escapeMarkdownValue, formatPasswordItemAsMarkdown } from '../util/markdown-item-format';
-import type { PasswordCopyFormat, PasswordGroup, PasswordItem, PasswordManagerData, PasswordManagerExportPayload } from '../util/types';
+import { escapeMarkdownValue, formatCredentialItemAsMarkdown } from '../util/markdown-item-format';
+import type { PasswordCopyFormat, CredentialGroup, CredentialItem, CredentialManagerData, CredentialManagerExportPayload } from '../util/types';
 
-function isBlankExportItem(item: PasswordItem) {
+function isBlankExportItem(item: CredentialItem) {
   return !!item.title.trim()
     && !item.username.trim()
     && !item.password.trim()
     && item.urls.every((url) => !url.trim())
-    && !item.notes.trim();
+    && !item.notes.trim()
+    && !item.expiresAt;
 }
 
 interface ParsedMarkdownGroup {
   groupName: string;
-  items: Partial<PasswordItem>[];
+  items: Partial<CredentialItem>[];
 }
 
 const MARKDOWN_FIELD_LABELS = {
@@ -20,6 +21,7 @@ const MARKDOWN_FIELD_LABELS = {
   password: [PWM_TEXT.COPY_FIELD_PASSWORD, 'Password'],
   url: [PWM_TEXT.COPY_FIELD_URL, 'URL', 'Link'],
   notes: [PWM_TEXT.COPY_FIELD_NOTES, 'Notes'],
+  expiration: [PWM_TEXT.EXPIRATION_DATE, 'Expiration date', 'Expires'],
   groupTags: [PWM_TEXT.COPY_FIELD_GROUP_TAGS, 'Group Tags'],
 } as const;
 
@@ -30,6 +32,7 @@ const CSV_HEADER_ALIASES = {
   password: ['password', '密码'],
   url: ['url', 'link', '链接'],
   notes: ['notes', 'remark', '备注'],
+  expiration: ['expiration', 'expirationDate', 'expiresAt', '过期日期'],
   pinned: ['pinned', '置顶'],
   createdAt: ['createdAt', '创建时间'],
 } as const;
@@ -55,6 +58,9 @@ function parseMarkdownFieldLabel(label: string) {
   }
   if (matchLookupKey(label, MARKDOWN_FIELD_LABELS.notes)) {
     return 'notes';
+  }
+  if (matchLookupKey(label, MARKDOWN_FIELD_LABELS.expiration)) {
+    return 'expiration';
   }
   if (matchLookupKey(label, MARKDOWN_FIELD_LABELS.groupTags)) {
     return 'groupTags';
@@ -127,28 +133,29 @@ function parseCsvRows(text: string) {
   return rows.filter((row) => row.some((value) => value.length > 0));
 }
 
-function createEmptyImportedItem(title = ''): Partial<PasswordItem> {
+function createEmptyImportedItem(title = ''): Partial<CredentialItem> {
   return {
     title,
     username: '',
     password: '',
     urls: [],
     notes: '',
+    expiresAt: undefined,
     pinned: false,
   };
 }
 
-function getJoinedUrls(item: Pick<PasswordItem, 'urls'> & { url?: string }) {
+function getJoinedUrls(item: Pick<CredentialItem, 'urls'> & { url?: string }) {
   return (item.urls.length ? item.urls : (item.url ? [item.url] : [])).join('\n');
 }
 
 function buildMarkdownItemLines(
-  item: PasswordItem,
+  item: CredentialItem,
   headingLevel: 2 | 3,
   format: PasswordCopyFormat,
   exportBlankFields = true,
 ) {
-  return formatPasswordItemAsMarkdown(item, {
+  return formatCredentialItemAsMarkdown(item, {
     headingLevel,
     format,
     exportBlankFields,
@@ -157,7 +164,7 @@ function buildMarkdownItemLines(
 
 function formatGroupedMarkdown(
   groupName: string,
-  items: PasswordItem[],
+  items: CredentialItem[],
   format: PasswordCopyFormat,
   exportBlankFields = true,
 ) {
@@ -211,7 +218,7 @@ function parseGroupedMarkdownGroups(text: string): ParsedMarkdownGroup[] {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const groups: ParsedMarkdownGroup[] = [];
   let currentGroup: ParsedMarkdownGroup | null = null;
-  let currentItem: Partial<PasswordItem> | null = null;
+  let currentItem: Partial<CredentialItem> | null = null;
 
   const ensureGroup = () => {
     if (currentGroup) {
@@ -245,7 +252,7 @@ function parseGroupedMarkdownGroups(text: string): ParsedMarkdownGroup[] {
     if (!currentItem) {
       continue;
     }
-    const itemRef: Partial<PasswordItem> = currentItem;
+    const itemRef: Partial<CredentialItem> = currentItem;
 
     const match = line.match(/^-\s*([^：:]+)[：:](.*)$/);
     if (!match) {
@@ -287,6 +294,9 @@ function parseGroupedMarkdownGroups(text: string): ParsedMarkdownGroup[] {
         index = nextIndex - 1;
         break;
       }
+      case 'expiration':
+        itemRef.expiresAt = value || undefined;
+        break;
       default:
         break;
     }
@@ -358,6 +368,9 @@ function parseFlatMarkdownItems(text: string) {
           index = nextIndex - 1;
           break;
         }
+        case 'expiration':
+          item.expiresAt = value || undefined;
+          break;
         default:
           break;
       }
@@ -367,8 +380,8 @@ function parseFlatMarkdownItems(text: string) {
   });
 }
 
-export function parseImportPayload(text: string): PasswordManagerExportPayload {
-  return JSON.parse(text) as PasswordManagerExportPayload;
+export function parseImportPayload(text: string): CredentialManagerExportPayload {
+  return JSON.parse(text) as CredentialManagerExportPayload;
 }
 
 export function downloadText(filename: string, content: string, mimeType: string) {
@@ -381,14 +394,14 @@ export function downloadText(filename: string, content: string, mimeType: string
   URL.revokeObjectURL(url);
 }
 
-export function downloadJson(filename: string, payload: PasswordManagerExportPayload) {
+export function downloadJson(filename: string, payload: CredentialManagerExportPayload) {
   downloadText(filename, JSON.stringify(payload, null, 2), 'application/json');
 }
 
 export function downloadMarkdownItems(
   filename: string,
-  items: PasswordItem[],
-  groups: PasswordGroup[],
+  items: CredentialItem[],
+  groups: CredentialGroup[],
   format: PasswordCopyFormat,
   exportBlankFields = true,
 ) {
@@ -407,7 +420,7 @@ export function downloadMarkdownItems(
 
 export function downloadMarkdownGroups(
   filename: string,
-  groupsWithItems: Array<{ group: PasswordGroup; items: PasswordItem[] }>,
+  groupsWithItems: Array<{ group: CredentialGroup; items: CredentialItem[] }>,
   format: PasswordCopyFormat,
   exportBlankFields = true,
 ) {
@@ -421,8 +434,8 @@ export function downloadMarkdownGroups(
 
 export function downloadMarkdownGroup(
   filename: string,
-  group: PasswordGroup,
-  items: PasswordItem[],
+  group: CredentialGroup,
+  items: CredentialItem[],
   format: PasswordCopyFormat,
   exportBlankFields = true,
 ) {
@@ -430,8 +443,8 @@ export function downloadMarkdownGroup(
 }
 
 export function exportLibraryToMarkdown(
-  groups: PasswordGroup[],
-  items: PasswordItem[],
+  groups: CredentialGroup[],
+  items: CredentialItem[],
   format: PasswordCopyFormat,
   exportEmptyGroups: boolean,
   exportBlankItems: boolean,
@@ -450,8 +463,8 @@ export function exportLibraryToMarkdown(
     .join('\n\n');
 }
 
-export function downloadCsvGroups(filename: string, groupsWithItems: Array<{ group: PasswordGroup; items: PasswordItem[] }>) {
-  const header = ['group', 'title', 'username', 'password', 'url', 'notes', 'pinned', 'createdAt'];
+export function downloadCsvGroups(filename: string, groupsWithItems: Array<{ group: CredentialGroup; items: CredentialItem[] }>) {
+  const header = ['group', 'title', 'username', 'password', 'url', 'notes', 'expiresAt', 'pinned', 'createdAt'];
   const rows = groupsWithItems.flatMap(({ group, items }) => items.map((item) => [
     group.name,
     item.title,
@@ -459,6 +472,7 @@ export function downloadCsvGroups(filename: string, groupsWithItems: Array<{ gro
     item.password,
     getJoinedUrls(item),
     item.notes,
+    item.expiresAt ?? '',
     String(item.pinned),
     String(item.createdAt),
   ].map(escapeCsvValue).join(',')));
@@ -466,8 +480,8 @@ export function downloadCsvGroups(filename: string, groupsWithItems: Array<{ gro
   downloadText(filename, [header.join(','), ...rows].join('\n'), 'text/csv;charset=utf-8');
 }
 
-export function downloadCsvGroup(filename: string, group: PasswordGroup, items: PasswordItem[]) {
-  const header = ['group', 'title', 'username', 'password', 'url', 'notes', 'pinned', 'createdAt'];
+export function downloadCsvGroup(filename: string, group: CredentialGroup, items: CredentialItem[]) {
+  const header = ['group', 'title', 'username', 'password', 'url', 'notes', 'expiresAt', 'pinned', 'createdAt'];
   const rows = items.map((item) => [
     group.name,
     item.title,
@@ -475,6 +489,7 @@ export function downloadCsvGroup(filename: string, group: PasswordGroup, items: 
     item.password,
     getJoinedUrls(item),
     item.notes,
+    item.expiresAt ?? '',
     String(item.pinned),
     String(item.createdAt),
   ].map(escapeCsvValue).join(','));
@@ -512,6 +527,7 @@ export function parseCsvGroup(text: string) {
   const passwordIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.password);
   const urlIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.url);
   const notesIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.notes);
+  const expirationIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.expiration);
   const pinnedIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.pinned);
   const createdAtIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.createdAt);
 
@@ -528,16 +544,17 @@ export function parseCsvGroup(text: string) {
       password: row[passwordIndex ?? -1]?.trim() || '',
       urls: (row[urlIndex ?? -1]?.split(/\r?\n/) ?? []).map((value) => value.trim()).filter(Boolean),
       notes: row[notesIndex ?? -1]?.trim() || '',
+      expiresAt: row[expirationIndex ?? -1]?.trim() || undefined,
       pinned: row[pinnedIndex ?? -1]?.trim() === 'true',
       createdAt: Number(row[createdAtIndex ?? -1]) || undefined,
     })),
   };
 }
 
-export function parseMarkdownItems(text: string, _data: PasswordManagerData, _defaultGroupId: string) {
+export function parseMarkdownItems(text: string, _data: CredentialManagerData, _defaultGroupId: string) {
   const groupedItems = parseGroupedMarkdownGroups(text)
     .flatMap((group) => group.items)
-    .filter((item) => item.title || item.username || item.password || item.urls?.length || item.notes);
+    .filter((item) => item.title || item.username || item.password || item.urls?.length || item.notes || item.expiresAt);
 
   if (groupedItems.length) {
     return groupedItems.map((item) => ({

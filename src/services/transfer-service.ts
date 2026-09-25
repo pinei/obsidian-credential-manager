@@ -15,19 +15,19 @@ import {
 } from '../data/transfer';
 import { PWM_TEXT } from '../lang';
 import { appendDateTimeSuffix } from '../util/file-name';
-import type { PasswordGroup, PasswordItem } from '../util/types';
-import type { PasswordPluginContext } from './plugin-context';
-import { PasswordPromptModal } from '../ui/password-prompt-modal';
+import type { CredentialGroup, CredentialItem } from '../util/types';
+import type { CredentialPluginContext } from './plugin-context';
+import { CredentialPromptModal } from '../ui/credential-prompt-modal';
 
-export class PasswordTransferService {
+export class CredentialTransferService {
   constructor(
     private readonly app: App,
-    private readonly context: PasswordPluginContext,
+    private readonly context: CredentialPluginContext,
   ) { }
 
   async exportLibrary() {
     const exportedAt = Date.now();
-    const filename = appendDateTimeSuffix('password-library.json', exportedAt);
+    const filename = appendDateTimeSuffix('credential-library.json', exportedAt);
 
     if (this.context.pluginConfig.encryptionEnabled) {
       const exported = await this.context.getStorageStore().downloadEncryptedLibrary(this.context.pluginConfig, filename);
@@ -166,8 +166,7 @@ export class PasswordTransferService {
           items: this.context.getItemsByGroup(groupId),
         };
       })
-      .filter((entry): entry is { group: PasswordGroup; items: PasswordItem[] } => !!entry);
-
+      .filter((entry): entry is { group: CredentialGroup; items: CredentialItem[] } => !!entry);
     if (!groupsWithItems.length) {
       return;
     }
@@ -213,7 +212,7 @@ export class PasswordTransferService {
   exportItems(itemIds: string[], format: 'json' | 'markdown') {
     const items = itemIds
       .map((itemId) => this.context.getItem(itemId))
-      .filter((item): item is PasswordItem => !!item);
+      .filter((item): item is CredentialItem => !!item);
     if (!items.length) {
       return;
     }
@@ -242,7 +241,7 @@ export class PasswordTransferService {
     try {
       const encryptedImport = isEncryptedLibraryImportText(text);
       const password = encryptedImport
-        ? (await PasswordPromptModal.open(this.app, {
+        ? (await CredentialPromptModal.open(this.app, {
           title: PWM_TEXT.UNLOCK_MANAGER_TITLE,
           fields: [{ key: 'password', label: PWM_TEXT.CURRENT_ENCRYPTION_PASSWORD }],
           confirmText: PWM_TEXT.CONFIRM,

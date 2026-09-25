@@ -1,21 +1,20 @@
 import type { EncryptedPasswordVerifier } from './util/types';
 import { PluginSettingTab, Setting, type App } from 'obsidian';
 import { PWM_TEXT } from './lang';
-import type PasswordManagerPlugin from './main';
+import type CredentialManagerPlugin from './main';
 import type { PasswordCopyFormat, PasswordUnlockMode } from './util/types';
 import { MarkdownFileSuggestModal } from './ui/markdown-file-suggest-modal';
 
-export interface PasswordManagerSettings {
+export interface CredentialManagerSettings {
   confirmBeforeDelete: boolean;
   copyFormat: PasswordCopyFormat;
   copyBlankFields: boolean;
-  showItemUsername: boolean;
   showItemUrl: boolean;
   showItemGroupTags: boolean;
   showItemNotes: boolean;
 }
 
-export interface PasswordPluginConfig {
+export interface CredentialPluginConfig {
   storageFolderName: string;
   autoBackupEnabled: boolean;
   autoBackupCount: number;
@@ -40,18 +39,17 @@ export interface PasswordPluginConfig {
   columnRatioLocked: boolean;
 }
 
-export const DEFAULT_PASSWORD_MANAGER_SETTINGS: PasswordManagerSettings = {
+export const DEFAULT_CREDENTIAL_MANAGER_SETTINGS: CredentialManagerSettings = {
   confirmBeforeDelete: true,
   copyFormat: 'markdown',
   copyBlankFields: true,
-  showItemUsername: true,
   showItemUrl: true,
   showItemGroupTags: true,
   showItemNotes: true,
 };
 
-export const DEFAULT_PASSWORD_PLUGIN_CONFIG: PasswordPluginConfig = {
-  storageFolderName: '.password',
+export const DEFAULT_CREDENTIAL_PLUGIN_CONFIG: CredentialPluginConfig = {
+  storageFolderName: '.credential',
   autoBackupEnabled: true,
   autoBackupCount: 20,
   autoBackupIntervalMinutes: 5,
@@ -83,10 +81,10 @@ const removeFromTabOrder = (element: HTMLElement | null) => {
   element.tabIndex = -1;
 };
 
-export class PasswordManagerSettingTab extends PluginSettingTab {
+export class CredentialManagerSettingTab extends PluginSettingTab {
   private isSyncingEncryptionToggle = false;
 
-  constructor(app: App, private readonly plugin: PasswordManagerPlugin) {
+  constructor(app: App, private readonly plugin: CredentialManagerPlugin) {
     super(app, plugin);
   }
 
@@ -103,7 +101,7 @@ export class PasswordManagerSettingTab extends PluginSettingTab {
       .setDesc(PWM_TEXT.STORAGE_FOLDER_SETTING_DESC)
       .addText((text) =>
         text
-          .setPlaceholder('.password')
+          .setPlaceholder('.credential')
           .setValue(this.plugin.pluginConfig.storageFolderName)
           .onChange(async (value) => {
             this.plugin.updatePluginConfig({ storageFolderName: value });

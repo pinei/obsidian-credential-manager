@@ -1,7 +1,7 @@
 import type {
   EncryptedPasswordLibraryPayload,
   EncryptedPasswordVerifier,
-  PasswordManagerData,
+  CredentialManagerData,
 } from './types';
 
 const KEY_LENGTH = 256;
@@ -20,7 +20,7 @@ export function isEncryptedPasswordVerifier(value: unknown): value is EncryptedP
   return !!value && typeof value === 'object' && (value as EncryptedPasswordVerifier).kind === 'password-verifier';
 }
 
-export async function encryptPasswordManagerData(data: PasswordManagerData, password: string) {
+export async function encryptCredentialManagerData(data: CredentialManagerData, password: string) {
   const encrypted = await encryptText(JSON.stringify(data), password);
   return {
     version: 1 as const,
@@ -32,9 +32,9 @@ export async function encryptPasswordManagerData(data: PasswordManagerData, pass
   };
 }
 
-export async function decryptPasswordManagerData(payload: EncryptedPasswordLibraryPayload, password: string) {
+export async function decryptCredentialManagerData(payload: EncryptedPasswordLibraryPayload, password: string) {
   const plainText = await decryptText(payload, password);
-  return JSON.parse(plainText) as PasswordManagerData;
+  return JSON.parse(plainText) as CredentialManagerData;
 }
 
 export async function createPasswordVerifier(password: string) {

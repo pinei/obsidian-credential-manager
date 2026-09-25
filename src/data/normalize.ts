@@ -1,20 +1,21 @@
 import { DEFAULT_DATA } from './defaults';
-import type { PasswordManagerSettings, PasswordPluginConfig } from '../settings';
+import type { CredentialManagerSettings, CredentialPluginConfig } from '../settings';
 import { PWM_TEXT } from '../lang';
 import { createId } from '../util/id';
 import type {
-  DeletedPasswordItem,
+  DeletedCredentialItem,
   EncryptedPasswordVerifier,
   PasswordCopyFormat,
-  PasswordGroup,
-  PasswordItem,
-  PasswordManagerData,
+  CredentialGroup,
+  CredentialItem,
+  CredentialManagerData,
+  CredentialType,
   PasswordUnlockMode,
   PwmSortMode,
 } from '../util/types';
 import { isEncryptedPasswordVerifier } from '../util/encryption';
 
-const DEFAULT_STORAGE_FOLDER_NAME = '.password';
+const DEFAULT_STORAGE_FOLDER_NAME = '.credential';
 const DEFAULT_AUTO_BACKUP_COUNT = 20;
 const DEFAULT_AUTO_BACKUP_INTERVAL_MINUTES = 5;
 const DEFAULT_TRASH_RETENTION_DAYS = 150;
@@ -26,14 +27,14 @@ const DEFAULT_COLUMN_RATIO_EXPR = '1,1,2';
 const DEFAULT_GROUP_COLUMN_WIDTH = 220;
 const DEFAULT_ITEM_COLUMN_WIDTH = 320;
 
-export function normalizePasswordManagerData(saved: unknown): PasswordManagerData {
-  const source = saved as Partial<PasswordManagerData> | undefined;
+export function normalizeCredentialManagerData(saved: unknown): CredentialManagerData {
+  const source = saved as Partial<CredentialManagerData> | undefined;
   const now = Date.now();
   const sourceGroups = Array.isArray(source?.groups)
     ? source?.groups ?? []
     : structuredClone(DEFAULT_DATA.groups);
   const groups = sourceGroups.map(
-    (group: Partial<PasswordGroup>, index: number): PasswordGroup => ({
+    (group: Partial<CredentialGroup>, index: number): CredentialGroup => ({
       id: group.id || createId(),
       name: group.name?.trim() || `${PWM_TEXT.GENERATED_GROUP_NAME} ${index + 1}`,
       createdAt: typeof group.createdAt === 'number' ? group.createdAt : now + index,
@@ -42,19 +43,22 @@ export function normalizePasswordManagerData(saved: unknown): PasswordManagerDat
   );
 
   const fallbackGroupId = groups[0]?.id ?? createId();
-  const availableGroupIds = groups.map((group: PasswordGroup) => group.id);
+  const availableGroupIds = groups.map((group: CredentialGroup) => group.id);
   const rawItems = Array.isArray(source?.items)
     ? source?.items ?? []
     : structuredClone(DEFAULT_DATA.items);
   const items = rawItems.map(
-    (item: Partial<PasswordItem> & { groupId?: string; url?: unknown }, index: number): PasswordItem => ({
+    (item: Partial<CredentialItem> & { groupId?: string; url?: unknown }, index: number): CredentialItem => ({
       id: item.id || createId(),
       groupIds: normalizeGroupIds(item.groupIds ?? item.groupId, fallbackGroupId, availableGroupIds),
       title: item.title || PWM_TEXT.GENERATED_NEW_ITEM_TITLE,
+      type: normalizeCredentialType(item.type),
+      data: normalizeCredentialData(item.type, item.data, item.username, item.password),
       username: item.username || '',
       password: item.password || '',
       urls: normalizeUrls(item.urls ?? item.url),
       notes: item.notes || '',
+      expiresAt: normalizeExpirationDate(item.expiresAt),
       pinned: typeof item.pinned === 'boolean' ? item.pinned : false,
       createdAt: typeof item.createdAt === 'number' ? item.createdAt : now + index,
       updatedAt: typeof item.updatedAt === 'number'
@@ -68,8 +72,8 @@ export function normalizePasswordManagerData(saved: unknown): PasswordManagerDat
     : [];
   const trash = rawTrash
     .filter((item) => !!item && typeof item === 'object')
-    .map((entry, index): DeletedPasswordItem => {
-      const item = entry as Partial<DeletedPasswordItem> & { url?: unknown };
+    .map((entry, index): DeletedCredentialItem => {
+      const item = entry as Partial<DeletedCredentialItem> & { url?: unknown };
       return {
         id: item.id || createId(),
         groupIds: normalizeGroupIds(item.groupIds, fallbackGroupId),
@@ -80,10 +84,13 @@ export function normalizePasswordManagerData(saved: unknown): PasswordManagerDat
             .filter(Boolean)
           : undefined,
         title: item.title || PWM_TEXT.GENERATED_NEW_ITEM_TITLE,
+        type: normalizeCredentialType(item.type),
+        data: normalizeCredentialData(item.type, item.data, item.username, item.password),
         username: item.username || '',
         password: item.password || '',
         urls: normalizeUrls(item.urls ?? item.url),
         notes: item.notes || '',
+        expiresAt: normalizeExpirationDate(item.expiresAt),
         pinned: typeof item.pinned === 'boolean' ? item.pinned : false,
         createdAt: typeof item.createdAt === 'number' ? item.createdAt : now + index,
         updatedAt: typeof item.updatedAt === 'number'
@@ -111,8 +118,8 @@ export function normalizePasswordManagerData(saved: unknown): PasswordManagerDat
   };
 }
 
-export function normalizeImportedLibraryData(data: PasswordManagerData): PasswordManagerData {
-  return normalizePasswordManagerData(data);
+export function normalizeImportedLibraryData(data: CredentialManagerData): CredentialManagerData {
+  return normalizeCredentialManagerData(data);
 }
 
 export function normalizeGroupIds(
@@ -150,8 +157,59 @@ export function normalizeUrls(urls: unknown): string[] {
     .filter(Boolean);
 }
 
-export function normalizeSettings(settings: unknown): PasswordManagerSettings {
-  const source = settings as PasswordManagerSettings | undefined;
+export function normalizeCredentialType(value: unknown): CredentialType {
+  const types: CredentialType[] = [
+    'login',
+    'app-registration',
+    'api-token',
+    'database',
+    'certificate',
+    'ssh-key',
+    'cloud-credentials',
+    'webhook',
+    'generic-secret',
+  ];
+  return types.includes(value as CredentialType) ? value as CredentialType : 'login';
+}
+
+export function normalizeCredentialData(
+  type: unknown,
+  data: unknown,
+  username?: unknown,
+  password?: unknown,
+): Record<string, string> {
+  const source = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+  const normalized = Object.fromEntries(
+    Object.entries(source)
+      .filter(([, value]) => typeof value === 'string')
+      .map(([key, value]) => [key, value as string]),
+  );
+  if (normalizeCredentialType(type) === 'login') {
+    normalized.username = typeof username === 'string' ? username : normalized.username ?? '';
+    normalized.password = typeof password === 'string' ? password : normalized.password ?? '';
+  }
+  return normalized;
+}
+
+export function normalizeExpirationDate(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return undefined;
+  }
+
+  const [yearText, monthText, dayText] = value.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    ? value
+    : undefined;
+}
+
+export function normalizeSettings(settings: unknown): CredentialManagerSettings {
+  const source = settings as CredentialManagerSettings | undefined;
   return {
     confirmBeforeDelete:
       typeof source?.confirmBeforeDelete === 'boolean'
@@ -162,10 +220,6 @@ export function normalizeSettings(settings: unknown): PasswordManagerSettings {
       typeof source?.copyBlankFields === 'boolean'
         ? source.copyBlankFields
         : DEFAULT_DATA.settings.copyBlankFields,
-    showItemUsername:
-      typeof source?.showItemUsername === 'boolean'
-        ? source.showItemUsername
-        : DEFAULT_DATA.settings.showItemUsername,
     showItemUrl:
       typeof source?.showItemUrl === 'boolean'
         ? source.showItemUrl
@@ -181,8 +235,8 @@ export function normalizeSettings(settings: unknown): PasswordManagerSettings {
   };
 }
 
-export function normalizePluginConfig(config: unknown): PasswordPluginConfig {
-  const source = config as Partial<PasswordPluginConfig> & {
+export function normalizePluginConfig(config: unknown): CredentialPluginConfig {
+  const source = config as Partial<CredentialPluginConfig> & {
     modalWidthVw?: unknown;
     modalHeightVh?: unknown;
   } | undefined;
@@ -333,6 +387,8 @@ export function normalizeSortMode(mode: unknown): PwmSortMode {
     'created-desc',
     'updated-asc',
     'updated-desc',
+    'expiration-asc',
+    'expiration-desc',
     'deleted-asc',
     'deleted-desc',
     'item-count-asc',

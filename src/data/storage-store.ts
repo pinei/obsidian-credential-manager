@@ -1,42 +1,42 @@
 import { normalizePath, type App } from 'obsidian';
 import { formatDateTimeSuffix } from '../util/file-name';
-import { decryptPasswordManagerData, encryptPasswordManagerData, isEncryptedLibraryPayload } from '../util/encryption';
+import { decryptCredentialManagerData, encryptCredentialManagerData, isEncryptedLibraryPayload } from '../util/encryption';
 import { downloadText } from './transfer';
-import { normalizePasswordManagerData } from './normalize';
+import { normalizeCredentialManagerData } from './normalize';
 import type {
-  DeletedPasswordItem,
+  DeletedCredentialItem,
   EncryptedPasswordLibraryPayload,
-  PasswordItem,
-  PasswordManagerData,
+  CredentialItem,
+  CredentialManagerData,
 } from '../util/types';
-import type { PasswordPluginConfig } from '../settings';
+import type { CredentialPluginConfig } from '../settings';
 
-const DEFAULT_STORAGE_FOLDER_NAME = '.password';
+const DEFAULT_STORAGE_FOLDER_NAME = '.credential';
 const DATA_FILE_NAME = 'data.json';
 const BACKUP_DIR_NAME = 'backup';
 const AUTO_BACKUP_PREFIX = 'auto-backup';
 const MANUAL_BACKUP_PREFIX = 'manual-backup';
 
-export class PasswordStorageStore {
+export class CredentialStorageStore {
   constructor(private readonly app: App) {}
 
-  getStorageFolder(config: PasswordPluginConfig) {
+  getStorageFolder(config: CredentialPluginConfig) {
     return normalizePath(config.storageFolderName.trim() || DEFAULT_STORAGE_FOLDER_NAME);
   }
 
-  getDataFilePath(config: PasswordPluginConfig) {
+  getDataFilePath(config: CredentialPluginConfig) {
     return normalizePath(`${this.getStorageFolder(config)}/${DATA_FILE_NAME}`);
   }
 
-  getAutoBackupDirPath(config: PasswordPluginConfig) {
+  getAutoBackupDirPath(config: CredentialPluginConfig) {
     return normalizePath(`${this.getStorageFolder(config)}/${BACKUP_DIR_NAME}`);
   }
 
-  getManualBackupDirPath(config: PasswordPluginConfig) {
+  getManualBackupDirPath(config: CredentialPluginConfig) {
     return normalizePath(`${this.getStorageFolder(config)}/${BACKUP_DIR_NAME}`);
   }
 
-  async readStoredData(config: PasswordPluginConfig): Promise<unknown> {
+  async readStoredData(config: CredentialPluginConfig): Promise<unknown> {
     const adapter = this.app.vault.adapter;
     const dataFilePath = this.getDataFilePath(config);
     if (!(await adapter.exists(dataFilePath))) {
@@ -51,7 +51,7 @@ export class PasswordStorageStore {
     }
   }
 
-  async loadData(config: PasswordPluginConfig, encryptionPassword?: string): Promise<PasswordManagerData | null> {
+  async loadData(config: CredentialPluginConfig, encryptionPassword?: string): Promise<CredentialManagerData | null> {
     const stored = await this.readStoredData(config);
     if (!stored) {
       return null;
@@ -63,27 +63,26 @@ export class PasswordStorageStore {
       }
 
       try {
-        return normalizePasswordManagerData(await decryptPasswordManagerData(stored, encryptionPassword));
+        return normalizeCredentialManagerData(await decryptCredentialManagerData(stored, encryptionPassword));
       } catch {
         return null;
       }
     }
 
-    return normalizePasswordManagerData(stored);
+    return normalizeCredentialManagerData(stored);
   }
 
-  async saveData(config: PasswordPluginConfig, data: PasswordManagerData, encryptionPassword?: string) {
+  async saveData(config: CredentialPluginConfig, data: CredentialManagerData, encryptionPassword?: string) {
     const adapter = this.app.vault.adapter;
     const storageFolder = this.getStorageFolder(config);
     const dataFilePath = this.getDataFilePath(config);
-
     await this.ensureDir(storageFolder);
 
     if (config.encryptionEnabled) {
       if (!encryptionPassword) {
         throw new Error('Missing encryption password');
       }
-      const encryptedPayload = await encryptPasswordManagerData(data, encryptionPassword);
+      const encryptedPayload = await encryptCredentialManagerData(data, encryptionPassword);
       await adapter.write(dataFilePath, JSON.stringify(encryptedPayload, null, 2));
       return;
     }
@@ -91,7 +90,7 @@ export class PasswordStorageStore {
     await adapter.write(dataFilePath, JSON.stringify(data, null, 2));
   }
 
-  async createAutoBackup(config: PasswordPluginConfig, data: PasswordManagerData, encryptionPassword?: string) {
+  async createAutoBackup(config: CredentialPluginConfig, data: CredentialManagerData, encryptionPassword?: string) {
     const backupFilePath = await this.writeBackupFile(
       config,
       data,
@@ -103,7 +102,7 @@ export class PasswordStorageStore {
     return backupFilePath;
   }
 
-  async createManualBackup(config: PasswordPluginConfig, data: PasswordManagerData, encryptionPassword?: string) {
+  async createManualBackup(config: CredentialPluginConfig, data: CredentialManagerData, encryptionPassword?: string) {
     return this.writeBackupFile(
       config,
       data,
@@ -113,7 +112,7 @@ export class PasswordStorageStore {
     );
   }
 
-  async createEncryptedManualBackup(config: PasswordPluginConfig) {
+  async createEncryptedManualBackup(config: CredentialPluginConfig) {
     const stored = await this.readStoredData(config);
     if (!stored || !isEncryptedLibraryPayload(stored)) {
       return null;
@@ -122,7 +121,7 @@ export class PasswordStorageStore {
     return this.writeRawBackupFile(this.getManualBackupDirPath(config), MANUAL_BACKUP_PREFIX, stored);
   }
 
-  async downloadEncryptedLibrary(config: PasswordPluginConfig, filename: string) {
+  async downloadEncryptedLibrary(config: CredentialPluginConfig, filename: string) {
     const stored = await this.readStoredData(config);
     if (!stored || !isEncryptedLibraryPayload(stored)) {
       return false;
@@ -132,7 +131,7 @@ export class PasswordStorageStore {
     return true;
   }
 
-  async pruneBackups(config: PasswordPluginConfig) {
+  async pruneBackups(config: CredentialPluginConfig) {
     if (config.autoBackupCount === 0) {
       return;
     }
@@ -154,9 +153,9 @@ export class PasswordStorageStore {
     }
   }
 
-  moveItemToTrash(data: PasswordManagerData, item: PasswordItem) {
+  moveItemToTrash(data: CredentialManagerData, item: CredentialItem) {
     const groupNameById = new Map(data.groups.map((group) => [group.id, group.name]));
-    const deletedItem: DeletedPasswordItem = {
+    const deletedItem: DeletedCredentialItem = {
       ...structuredClone(item),
       deletedAt: Date.now(),
       deletedGroupNames: item.groupIds.map((groupId) => groupNameById.get(groupId) || groupId),
@@ -165,47 +164,9 @@ export class PasswordStorageStore {
     return deletedItem;
   }
 
-  async migrateLegacyTrash(config: PasswordPluginConfig, pluginId: string) {
-    const adapter = this.app.vault.adapter;
-    const legacyTrashPath = normalizePath(`${this.app.vault.configDir}/plugins/${pluginId}/trash.json`);
-    if (!(await adapter.exists(legacyTrashPath))) {
-      return;
-    }
-
-    const storedData = await this.readStoredData(config);
-    if (!storedData || isEncryptedLibraryPayload(storedData)) {
-      return;
-    }
-
-    try {
-      const content = await adapter.read(legacyTrashPath);
-      const parsed = JSON.parse(content) as { items?: DeletedPasswordItem[] };
-      const legacyItems = Array.isArray(parsed?.items) ? parsed.items : [];
-      if (!legacyItems.length) {
-        await adapter.remove(legacyTrashPath).catch(() => undefined);
-        return;
-      }
-
-      const normalizedStored = normalizePasswordManagerData(storedData);
-      if (normalizedStored.trash.length) {
-        await adapter.remove(legacyTrashPath).catch(() => undefined);
-        return;
-      }
-
-      const normalized = normalizePasswordManagerData({
-        ...(storedData as Record<string, unknown>),
-        trash: legacyItems,
-      });
-      await this.saveData(config, normalized);
-      await adapter.remove(legacyTrashPath).catch(() => undefined);
-    } catch {
-      // ignore migration failure and keep running with current data
-    }
-  }
-
   private async writeBackupFile(
-    config: PasswordPluginConfig,
-    data: PasswordManagerData,
+    config: CredentialPluginConfig,
+    data: CredentialManagerData,
     backupDirPath: string,
     filePrefix: string,
     encryptionPassword?: string,
@@ -216,7 +177,7 @@ export class PasswordStorageStore {
       if (!encryptionPassword) {
         throw new Error('Missing encryption password');
       }
-      const encryptedPayload = await encryptPasswordManagerData(data, encryptionPassword);
+      const encryptedPayload = await encryptCredentialManagerData(data, encryptionPassword);
       return this.writeRawBackupFile(backupDirPath, filePrefix, encryptedPayload, exportedAt);
     }
 
@@ -232,7 +193,7 @@ export class PasswordStorageStore {
   private async writeRawBackupFile(
     backupDirPath: string,
     filePrefix: string,
-    payload: EncryptedPasswordLibraryPayload | { version: 1; kind: 'library'; exportedAt: number; data: PasswordManagerData },
+    payload: EncryptedPasswordLibraryPayload | { version: 1; kind: 'library'; exportedAt: number; data: CredentialManagerData },
     exportedAt = Date.now(),
   ) {
     const adapter = this.app.vault.adapter;

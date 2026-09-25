@@ -1,28 +1,28 @@
 import { Plugin, type App } from 'obsidian';
-import { PasswordStorageStore } from './data/storage-store';
+import { CredentialStorageStore } from './data/storage-store';
 import { PWM_TEXT } from './lang';
-import { PasswordPluginContext } from './services/plugin-context';
-import { PasswordEncryptionService } from './services/encryption-service';
-import { PasswordTransferService } from './services/transfer-service';
+import { CredentialPluginContext } from './services/plugin-context';
+import { CredentialEncryptionService } from './services/encryption-service';
+import { CredentialTransferService } from './services/transfer-service';
 import { createIconButton } from './services/ui-helpers';
-import type { PasswordItem, PasswordManagerData, PwmSortMode } from './util/types';
-import type { PasswordManagerSettings, PasswordPluginConfig } from './settings';
-import { PasswordManagerModal } from './ui/password-manager-modal';
-import { PasswordManagerSettingTab } from './settings';
+import type { CredentialItem, CredentialManagerData, PwmSortMode } from './util/types';
+import type { CredentialManagerSettings, CredentialPluginConfig } from './settings';
+import { CredentialManagerModal } from './ui/credential-manager-modal';
+import { CredentialManagerSettingTab } from './settings';
 
-export default class PasswordManagerPlugin extends Plugin {
-  private storageStore!: PasswordStorageStore;
-  private context!: PasswordPluginContext;
-  private encryptionService!: PasswordEncryptionService;
-  private transferService!: PasswordTransferService;
-  private readonly managerModals = new Set<PasswordManagerModal>();
+export default class CredentialManagerPlugin extends Plugin {
+  private storageStore!: CredentialStorageStore;
+  private context!: CredentialPluginContext;
+  private encryptionService!: CredentialEncryptionService;
+  private transferService!: CredentialTransferService;
+  private readonly managerModals = new Set<CredentialManagerModal>();
   private managerOpenInFlight: Promise<void> | null = null;
 
-  get data(): PasswordManagerData {
+  get data(): CredentialManagerData {
     return this.context.data;
   }
 
-  get pluginConfig(): PasswordPluginConfig {
+  get pluginConfig(): CredentialPluginConfig {
     return this.context.pluginConfig;
   }
 
@@ -34,17 +34,16 @@ export default class PasswordManagerPlugin extends Plugin {
   }
 
   private initializeDependencies() {
-    this.storageStore = new PasswordStorageStore(this.app);
-    this.context = new PasswordPluginContext(
+    this.storageStore = new CredentialStorageStore(this.app);
+    this.context = new CredentialPluginContext(
       this.storageStore,
       {
-        loadLegacyData: () => this.loadData(),
+        loadPluginConfig: () => this.loadData(),
         savePluginConfig: (config) => this.saveData(config),
       },
-      this.manifest.id,
     );
-    this.encryptionService = new PasswordEncryptionService(this.app, this.context);
-    this.transferService = new PasswordTransferService(this.app, this.context);
+    this.encryptionService = new CredentialEncryptionService(this.app, this.context);
+    this.transferService = new CredentialTransferService(this.app, this.context);
     this.context.setEncryptionWriteGuard(() => this.encryptionService.ensureEncryptionWriteAccess());
   }
 
@@ -61,7 +60,7 @@ export default class PasswordManagerPlugin extends Plugin {
       },
     });
 
-    this.addSettingTab(new PasswordManagerSettingTab(this.app, this));
+    this.addSettingTab(new CredentialManagerSettingTab(this.app, this));
   }
 
   async openManager() {
@@ -112,7 +111,7 @@ export default class PasswordManagerPlugin extends Plugin {
     }
   }
 
-  private getOpenManagerModal(): PasswordManagerModal | undefined {
+  private getOpenManagerModal(): CredentialManagerModal | undefined {
     const next = this.managerModals.values().next();
     return next.done ? undefined : next.value;
   }
@@ -130,7 +129,7 @@ export default class PasswordManagerPlugin extends Plugin {
       return;
     }
 
-    new PasswordManagerModal(this.app, this, { mode }).open();
+    new CredentialManagerModal(this.app, this, { mode }).open();
   }
 
   openSettings() {
@@ -144,11 +143,11 @@ export default class PasswordManagerPlugin extends Plugin {
     setting.openTabById(this.manifest.id);
   }
 
-  registerManagerModal(modal: PasswordManagerModal) {
+  registerManagerModal(modal: CredentialManagerModal) {
     this.managerModals.add(modal);
   }
 
-  unregisterManagerModal(modal: PasswordManagerModal) {
+  unregisterManagerModal(modal: CredentialManagerModal) {
     this.managerModals.delete(modal);
   }
 
@@ -262,11 +261,11 @@ export default class PasswordManagerPlugin extends Plugin {
     return this.transferService.importItemsFromText(text, groupId);
   }
 
-  updatePluginConfig(patch: Partial<PasswordPluginConfig>) {
+  updatePluginConfig(patch: Partial<CredentialPluginConfig>) {
     this.context.updatePluginConfig(patch);
   }
 
-  updateSettings(patch: Partial<PasswordManagerSettings>) {
+  updateSettings(patch: Partial<CredentialManagerSettings>) {
     this.context.updateSettings(patch);
   }
 
@@ -278,8 +277,8 @@ export default class PasswordManagerPlugin extends Plugin {
     return this.context.updateGroupName(groupId, name);
   }
 
-  createItem(groupId: string) {
-    return this.context.createItem(groupId);
+  createItem(groupId: string, type?: import('./util/types').CredentialType) {
+    return this.context.createItem(groupId, type);
   }
 
   duplicateItem(itemId: string) {
@@ -290,7 +289,7 @@ export default class PasswordManagerPlugin extends Plugin {
     return this.context.updateItemTitle(itemId, title);
   }
 
-  updateItem(itemId: string, patch: Partial<Omit<PasswordItem, 'id'>>) {
+  updateItem(itemId: string, patch: Partial<Omit<CredentialItem, 'id'>>) {
     this.context.updateItem(itemId, patch);
   }
 

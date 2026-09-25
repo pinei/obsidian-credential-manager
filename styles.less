@@ -309,18 +309,19 @@
   }
 }
 
-// 
 .pwm-column.pwm-items-column {
   .pwm-list {
-    display: grid;
-    gap: 5px;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    max-height: fit-content;
-    margin-bottom: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .pwm-list-item {
-    height: fit-content;
+    flex: 0 0 auto;
+    width: 100%;
+    height: auto;
+    margin-bottom: 0;
+    box-sizing: border-box;
   }
 }
 
@@ -332,6 +333,7 @@
   position: relative;
   align-items: flex-start;
   min-height: 76px;
+  padding-right: 48px;
 
   .pwm-item-row-actions-bottom {
     opacity: 0;
@@ -416,6 +418,72 @@
 
 .pwm-item-title {
   font-weight: var(--font-medium);
+}
+
+.pwm-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  flex-wrap: wrap;
+}
+
+.pwm-details-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pwm-credential-type-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--text-accent);
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.pwm-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pwm-expiration-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: var(--font-smallest);
+  font-weight: var(--font-medium);
+}
+
+.pwm-expiration-expired {
+  color: var(--text-error);
+  background: color-mix(in srgb, var(--text-error) 12%, transparent);
+}
+
+.pwm-expiration-expiring-soon {
+  color: var(--text-warning);
+  background: color-mix(in srgb, var(--text-warning) 12%, transparent);
+}
+
+.pwm-expiration-active {
+  color: var(--text-muted);
+}
+
+.pwm-secret-textarea {
+  &.pwm-secret-textarea-hidden {
+    -webkit-text-security: disc;
+  }
 }
 
 .pwm-item-subtitle {
@@ -527,6 +595,15 @@
 
   &.has-leading-icon input {
     padding-left: 36px;
+  }
+
+  &.has-leading-icon select {
+    padding-left: 36px;
+  }
+
+  select {
+    flex: 1;
+    min-width: 0;
   }
 
   &.has-floating-actions input {

@@ -2,7 +2,7 @@
 
 [中文文档](./README.zh-CN.md)
 
-> Lightweight account, password, and link management inside Obsidian — with encryption, backup, recycle bin, and import/export support.
+> Lightweight credential and link management inside Obsidian — with encryption, backup, recycle bin, and import/export support.
 
 ![Obsidian Credential Manager](./assets/demo.png)
 
@@ -14,11 +14,11 @@ It uses a JSON-based data structure and provides a three-column management inter
 
 ## ✨ Features
 
-- 🔐 **Encrypted storage** – Supports local encryption of the entire password vault. Unlock method and re-verification timing are configurable.
+- 🔐 **Encrypted storage** – Supports local encryption of the entire credential vault. Unlock method and re-verification timing are configurable.
 - 📂 **Group management** – Create custom groups (default, website keys, personal profiles, etc.) for easy classification.
-- 🔍 **Quick search** – Real-time search by title, username, link, note, or group name.
+- 🔍 **Quick search** – Real-time search by title, credential metadata, link, note, or group name.
 - 💾 **Backup & restore** – Export all data as a one-click JSON snapshot and restore anytime.
-- 📝 **Auto-export to Markdown** – Automatically sync and export the complete password vault to a specified Markdown file, convenient for read-only access, review, or integration into your note-taking workflow.
+- 📝 **Auto-export to Markdown** – Automatically sync and export the complete credential vault to a specified Markdown file, convenient for read-only access, review, or integration into your note-taking workflow.
 - 📤 **Import / Export** – Supports Markdown / JSON formats for migration or collaboration with other tools.
 - 🗑️ **Recycle bin** – Deleted entries are temporarily stored in the recycle bin and can be restored or permanently removed.
 
@@ -32,14 +32,15 @@ It uses a JSON-based data structure and provides a three-column management inter
 
 ### Local manual installation
 
-- Download the latest `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/obsidian-credential-manager/` folder.
+- Download the latest `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/credential-manager/` folder.
 - Restart Obsidian and enable the plugin.
 
 ## 🔒 Security Notes
 
 - This plugin **does not** transmit any data over the network; all information remains within your local Obsidian Vault.
 - The current encryption implementation is based on the browser's native Web Crypto API: **PBKDF2 with SHA-256** is used to derive a key from the user-supplied encryption password, with **250,000** iterations; the actual data is encrypted using **AES-GCM 256-bit**, with a unique `salt` and `iv` generated for each encryption operation.
-- When encryption is enabled, the plugin encrypts the entire password vault (`data.json`) for storage; password verification is performed via a separate verifier ciphertext, without storing the plaintext password in a reversible form.
+- When encryption is enabled, the plugin encrypts the entire credential vault (`data.json`) for storage; password verification is performed via a separate verifier ciphertext, without storing the plaintext password in a reversible form.
+- Credential data is stored by default under `.credential/`; this plugin does not read the former `.password/` storage folder. This allows the credential manager and the legacy password manager to coexist in the same vault.
 - If you use Git to sync your vault, make sure `.gitignore` excludes any encryption key files (if present), or be aware that the ciphertext inside the JSON files will be committed.
 
 > If you need more comprehensive professional credential management capabilities, this plugin is better suited as a lightweight recording tool rather than a full replacement for dedicated credential managers.
@@ -55,6 +56,8 @@ git clone ...
 npm install
 npm run dev
 ```
+
+The production bundle is generated at `main.js`. Obsidian release files are `main.js`, `manifest.json`, and `styles.css`.
 
 ## 👏 Acknowledgments
 

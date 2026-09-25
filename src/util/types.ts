@@ -1,4 +1,4 @@
-import type { PasswordManagerSettings } from '../settings';
+import type { CredentialManagerSettings } from '../settings';
 
 export type PwmSortMode =
   | 'custom'
@@ -8,44 +8,61 @@ export type PwmSortMode =
   | 'created-desc'
   | 'updated-asc'
   | 'updated-desc'
+  | 'expiration-asc'
+  | 'expiration-desc'
   | 'deleted-asc'
   | 'deleted-desc'
   | 'item-count-asc'
   | 'item-count-desc';
 export type PasswordCopyFormat = 'markdown' | 'callout';
 export type PasswordUnlockMode = 'session' | 'interval' | 'always';
+export type CredentialType =
+  | 'login'
+  | 'app-registration'
+  | 'api-token'
+  | 'database'
+  | 'certificate'
+  | 'ssh-key'
+  | 'cloud-credentials'
+  | 'webhook'
+  | 'generic-secret';
 
-export interface PasswordItem {
+export type CredentialData = Record<string, string>;
+
+export interface CredentialItem {
   id: string;
   groupIds: string[];
   title: string;
+  type: CredentialType;
+  data: CredentialData;
   username: string;
   password: string;
   urls: string[];
   notes: string;
+  expiresAt?: string;
   pinned: boolean;
   createdAt: number;
   updatedAt: number;
   order: number;
 }
 
-export interface DeletedPasswordItem extends PasswordItem {
+export interface DeletedCredentialItem extends CredentialItem {
   deletedAt: number;
   deletedGroupNames?: string[];
 }
 
-export interface PasswordTrashData {
-  items: DeletedPasswordItem[];
+export interface CredentialTrashData {
+  items: DeletedCredentialItem[];
 }
 
-export interface PasswordGroup {
+export interface CredentialGroup {
   id: string;
   name: string;
   createdAt: number;
   order: number;
 }
 
-export interface PasswordManagerViewState {
+export interface CredentialManagerViewState {
   groupSort: PwmSortMode;
   itemSort: PwmSortMode;
   lastMode: 'default' | 'trash';
@@ -73,12 +90,12 @@ export interface EncryptedPasswordVerifier {
   cipherText: string;
 }
 
-export interface PasswordManagerData {
-  groups: PasswordGroup[];
-  items: PasswordItem[];
-  trash: DeletedPasswordItem[];
-  view: PasswordManagerViewState;
-  settings: PasswordManagerSettings;
+export interface CredentialManagerData {
+  groups: CredentialGroup[];
+  items: CredentialItem[];
+  trash: DeletedCredentialItem[];
+  view: CredentialManagerViewState;
+  settings: CredentialManagerSettings;
 }
 
 export interface PwmFieldAction {
@@ -91,14 +108,14 @@ export interface PwmTextFieldOptions {
   leadingIcon?: string;
 }
 
-export interface PasswordManagerExportPayload {
+export interface CredentialManagerExportPayload {
   version: 1;
   kind: 'library' | 'group' | 'groups' | 'item' | 'items';
   exportedAt: number;
   data:
-    | PasswordManagerData
-    | { group: PasswordGroup; items: PasswordItem[] }
-    | { groups: Array<{ group: PasswordGroup; items: PasswordItem[] }> }
-    | PasswordItem
-    | PasswordItem[];
+    | CredentialManagerData
+    | { group: CredentialGroup; items: CredentialItem[] }
+    | { groups: Array<{ group: CredentialGroup; items: CredentialItem[] }> }
+    | CredentialItem
+    | CredentialItem[];
 }

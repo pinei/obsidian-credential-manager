@@ -3,14 +3,14 @@ import { PWM_TEXT, formatPWMText } from '../lang';
 import { validateFileSafeName } from '../util/file-name';
 import { getNextDuplicatedTitle } from '../util/duplicate-title';
 import { normalizeGroupIds } from './normalize';
-import type { PasswordGroup, PasswordItem, PasswordManagerData } from '../util/types';
+import type { CredentialGroup, CredentialItem, CredentialManagerData, CredentialType } from '../util/types';
 
-function touchItem(item: PasswordItem) {
+function touchItem(item: CredentialItem) {
   item.updatedAt = Date.now();
 }
 
-export function createGroup(data: PasswordManagerData, name?: string) {
-  const group: PasswordGroup = {
+export function createGroup(data: CredentialManagerData, name?: string) {
+  const group: CredentialGroup = {
     id: createId(),
     name: name?.trim() || `${PWM_TEXT.GENERATED_NEW_GROUP_NAME} ${data.groups.length + 1}`,
     createdAt: Date.now(),
@@ -21,7 +21,7 @@ export function createGroup(data: PasswordManagerData, name?: string) {
   return group;
 }
 
-export function updateGroupName(data: PasswordManagerData, groupId: string, name: string) {
+export function updateGroupName(data: CredentialManagerData, groupId: string, name: string) {
   const group = data.groups.find((item) => item.id === groupId);
   if (!group) {
     return PWM_TEXT.GROUP_NOT_FOUND;
@@ -41,16 +41,19 @@ export function updateGroupName(data: PasswordManagerData, groupId: string, name
   return null;
 }
 
-export function createItem(data: PasswordManagerData, groupId: string) {
+export function createItem(data: CredentialManagerData, groupId: string, type: CredentialType = 'login') {
   const now = Date.now();
-  const item: PasswordItem = {
+  const item: CredentialItem = {
     id: createId(),
     groupIds: [groupId],
     title: PWM_TEXT.GENERATED_NEW_ITEM_TITLE,
+    type,
+    data: createCredentialData(type),
     username: '',
     password: '',
     urls: [],
     notes: '',
+    expiresAt: undefined,
     pinned: false,
     createdAt: now,
     updatedAt: now,
@@ -61,14 +64,14 @@ export function createItem(data: PasswordManagerData, groupId: string) {
   return item;
 }
 
-export function duplicateItem(data: PasswordManagerData, itemId: string) {
+export function duplicateItem(data: CredentialManagerData, itemId: string) {
   const source = data.items.find((item) => item.id === itemId);
   if (!source) {
     return null;
   }
 
   const now = Date.now();
-  const item: PasswordItem = {
+  const item: CredentialItem = {
     ...structuredClone(source),
     id: createId(),
     title: getNextDuplicatedTitle(data.items, source.title),
@@ -85,7 +88,7 @@ export function duplicateItem(data: PasswordManagerData, itemId: string) {
   return item;
 }
 
-export function updateItemTitle(data: PasswordManagerData, itemId: string, title: string) {
+export function updateItemTitle(data: CredentialManagerData, itemId: string, title: string) {
   const item = data.items.find((entry) => entry.id === itemId);
   if (!item) {
     return PWM_TEXT.ITEM_NOT_FOUND;
@@ -106,7 +109,7 @@ export function updateItemTitle(data: PasswordManagerData, itemId: string, title
   return null;
 }
 
-export function updateItem(data: PasswordManagerData, itemId: string, patch: Partial<Omit<PasswordItem, 'id'>>) {
+export function updateItem(data: CredentialManagerData, itemId: string, patch: Partial<Omit<CredentialItem, 'id'>>) {
   const item = data.items.find((entry) => entry.id === itemId);
   if (!item) {
     return;
@@ -130,7 +133,7 @@ export function updateItem(data: PasswordManagerData, itemId: string, patch: Par
   }
 }
 
-export function deleteGroup(data: PasswordManagerData, groupId: string) {
+export function deleteGroup(data: CredentialManagerData, groupId: string) {
   data.items = data.items.filter((item) => {
     if (!item.groupIds.includes(groupId)) {
       return true;
@@ -151,7 +154,7 @@ export function deleteGroup(data: PasswordManagerData, groupId: string) {
   return true;
 }
 
-export function deleteItem(data: PasswordManagerData, itemId: string) {
+export function deleteItem(data: CredentialManagerData, itemId: string) {
   const item = data.items.find((entry) => entry.id === itemId);
   if (!item) {
     return null;
@@ -162,11 +165,11 @@ export function deleteItem(data: PasswordManagerData, itemId: string) {
   return item;
 }
 
-export function moveGroup(data: PasswordManagerData, groupId: string, toIndex: number) {
+export function moveGroup(data: CredentialManagerData, groupId: string, toIndex: number) {
   moveGroups(data, [groupId], toIndex);
 }
 
-export function moveGroups(data: PasswordManagerData, groupIds: string[], toIndex: number) {
+export function moveGroups(data: CredentialManagerData, groupIds: string[], toIndex: number) {
   const groups = [...data.groups];
   const selectedIds = new Set(groupIds);
   const movingGroups = groups.filter((group) => selectedIds.has(group.id));
@@ -181,11 +184,11 @@ export function moveGroups(data: PasswordManagerData, groupIds: string[], toInde
   reindexOrders(data);
 }
 
-export function moveItemWithinGroup(data: PasswordManagerData, itemId: string, toIndex: number, groupId: string) {
+export function moveItemWithinGroup(data: CredentialManagerData, itemId: string, toIndex: number, groupId: string) {
   moveItemsWithinGroup(data, [itemId], toIndex, groupId);
 }
 
-export function moveItemsWithinGroup(data: PasswordManagerData, itemIds: string[], toIndex: number, groupId: string) {
+export function moveItemsWithinGroup(data: CredentialManagerData, itemIds: string[], toIndex: number, groupId: string) {
   const visibleItems = data.items.filter((item) => item.groupIds.includes(groupId));
   const selectedIds = new Set(itemIds.filter((itemId) => visibleItems.some((item) => item.id === itemId)));
   const movingItems = visibleItems.filter((item) => selectedIds.has(item.id));
@@ -221,7 +224,7 @@ export function moveItemsWithinGroup(data: PasswordManagerData, itemIds: string[
   reindexOrders(data);
 }
 
-export function assignItemToGroup(data: PasswordManagerData, itemId: string, groupId: string, mode: 'move' | 'add') {
+export function assignItemToGroup(data: CredentialManagerData, itemId: string, groupId: string, mode: 'move' | 'add') {
   const item = data.items.find((entry) => entry.id === itemId);
   const group = data.groups.find((entry) => entry.id === groupId);
   if (!item || !group) {
@@ -246,7 +249,7 @@ export function assignItemToGroup(data: PasswordManagerData, itemId: string, gro
   return true;
 }
 
-export function removeItemFromGroup(data: PasswordManagerData, itemId: string, groupId: string) {
+export function removeItemFromGroup(data: CredentialManagerData, itemId: string, groupId: string) {
   const item = data.items.find((entry) => entry.id === itemId);
   if (!item || !item.groupIds.includes(groupId)) {
     return false;
@@ -261,7 +264,7 @@ export function removeItemFromGroup(data: PasswordManagerData, itemId: string, g
   return true;
 }
 
-export function reindexOrders(data: PasswordManagerData) {
+export function reindexOrders(data: CredentialManagerData) {
   data.groups.forEach((group, index) => {
     group.order = index;
   });
@@ -270,6 +273,30 @@ export function reindexOrders(data: PasswordManagerData) {
   });
 }
 
-export function getFallbackGroupId(data: PasswordManagerData) {
+export function getFallbackGroupId(data: CredentialManagerData) {
   return data.groups[0]?.id;
+}
+
+function createCredentialData(type: CredentialType): Record<string, string> {
+  switch (type) {
+    case 'app-registration':
+      return { clientId: '', clientSecret: '', tenantId: '' };
+    case 'api-token':
+      return { tokenName: '', tokenValuePrimary: '', tokenValueSecondary: '', provider: '' };
+    case 'database':
+      return { engine: 'postgresql', host: '', port: '', databaseServiceName: '', schema: '', username: '', password: '' };
+    case 'certificate':
+      return { certName: '', thumbprint: '', privateKeyLocation: '' };
+    case 'ssh-key':
+      return { keyName: '', username: '', host: '', privateKeyPath: '', passphrase: '' };
+    case 'cloud-credentials':
+      return { provider: '', accountName: '', accessKeyId: '', secretAccessKey: '' };
+    case 'webhook':
+      return { name: '', url: '', method: 'POST', signingSecret: '' };
+    case 'generic-secret':
+      return { fieldName: '', value: '' };
+    case 'login':
+    default:
+      return { username: '', password: '' };
+  }
 }

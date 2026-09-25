@@ -1,8 +1,9 @@
 import { App, Menu, Modal, Notice, Scope, setIcon } from 'obsidian';
-import type PasswordManagerPlugin from '../main';
+import type CredentialManagerPlugin from '../main';
 import { PWM_TEXT, formatPWMText } from '../lang';
 import { matchesAllKeywordsInValue, matchesAnyFieldKeywords, parseSearchKeywords } from '../util/search';
-import type { DeletedPasswordItem, PasswordGroup, PasswordItem, PwmFieldAction, PwmSortMode, PwmTextFieldOptions } from '../util/types';
+import type { CredentialType, DeletedCredentialItem, CredentialGroup, CredentialItem, PwmFieldAction, PwmSortMode, PwmTextFieldOptions } from '../util/types';
+import { getCredentialExpirationState } from '../credentials/expiration';
 import { applyPwmModalClass, clearPwmModalShell } from './pwm-modal-shell';
 
 function setCssProps(element: HTMLElement, styles: Record<string, string>) {
@@ -29,6 +30,8 @@ const ITEM_SORT_OPTIONS: Array<{ value: PwmSortMode; label: string }> = [
   { value: 'created-desc', label: PWM_TEXT.SORT_BY_CREATED_DESC },
   { value: 'updated-asc', label: PWM_TEXT.SORT_BY_UPDATED_ASC },
   { value: 'updated-desc', label: PWM_TEXT.SORT_BY_UPDATED_DESC },
+  { value: 'expiration-asc', label: PWM_TEXT.SORT_BY_EXPIRATION_ASC },
+  { value: 'expiration-desc', label: PWM_TEXT.SORT_BY_EXPIRATION_DESC },
 ];
 
 const TRASH_ITEM_SORT_OPTIONS: Array<{ value: PwmSortMode; label: string }> = [
@@ -43,9 +46,55 @@ const TRASH_ITEM_SORT_OPTIONS: Array<{ value: PwmSortMode; label: string }> = [
 
 const SORT_MENU_ICON = 'arrow-up-down';
 
-type PasswordManagerModalMode = 'default' | 'trash';
-
-type DetailFieldKey = 'title' | 'username' | 'password' | 'notes';
+type CredentialManagerModalMode = 'default' | 'trash';
+type DetailFieldKey = 'title' | 'username' | 'password' | 'expiresAt' | 'notes';
+type CredentialSummaryField =
+  | 'username'
+  | 'clientId'
+  | 'tenantId'
+  | 'tokenName'
+  | 'provider'
+  | 'databaseServiceName'
+  | 'host'
+  | 'certName'
+  | 'thumbprint'
+  | 'keyName'
+  | 'accountName'
+  | 'name'
+  | 'fieldName';
+const CREDENTIAL_TYPES: Array<{ value: CredentialType; label: string }> = [
+  { value: 'login', label: 'Login' },
+  { value: 'app-registration', label: 'App registration' },
+  { value: 'api-token', label: 'API token' },
+  { value: 'database', label: 'Database' },
+  { value: 'certificate', label: 'Certificate' },
+  { value: 'ssh-key', label: 'SSH key' },
+  { value: 'cloud-credentials', label: 'Cloud credentials' },
+  { value: 'webhook', label: 'Webhook' },
+  { value: 'generic-secret', label: 'Generic secret' },
+];
+const CREDENTIAL_TYPE_ICONS: Record<CredentialType, string> = {
+  login: 'log-in',
+  'app-registration': 'app-window',
+  'api-token': 'key-round',
+  database: 'database',
+  certificate: 'badge-check',
+  'ssh-key': 'terminal',
+  'cloud-credentials': 'cloud',
+  webhook: 'webhook',
+  'generic-secret': 'lock-keyhole',
+};
+const CREDENTIAL_SUMMARY_FIELDS: Record<CredentialType, CredentialSummaryField[]> = {
+  login: ['username'],
+  'app-registration': ['clientId', 'tenantId'],
+  'api-token': ['tokenName', 'provider'],
+  database: ['databaseServiceName', 'host'],
+  certificate: ['certName', 'thumbprint'],
+  'ssh-key': ['keyName', 'host'],
+  'cloud-credentials': ['provider', 'accountName'],
+  webhook: ['name'],
+  'generic-secret': ['fieldName'],
+};
 type DetailFocusTarget = {
   field: DetailFieldKey | 'url';
   index?: number;
@@ -53,8 +102,8 @@ type DetailFocusTarget = {
   cursorEnd?: number;
 };
 
-export class PasswordManagerModal extends Modal {
-  private mode: PasswordManagerModalMode;
+export class CredentialManagerModal extends Modal {
+  private mode: CredentialManagerModalMode;
   private rootEl: HTMLDivElement | null = null;
   private activeResizeCleanup: (() => void) | null = null;
   private selectedGroupId = '';
@@ -84,12 +133,16 @@ export class PasswordManagerModal extends Modal {
   private detailsDraftItemId = '';
   private detailsDraft = {
     title: '',
+    type: 'login' as CredentialType,
+    data: {} as Record<string, string>,
     username: '',
     password: '',
+    expiresAt: '',
     urls: [''],
     notes: '',
   };
   private detailInputs: Partial<Record<DetailFieldKey, HTMLInputElement | HTMLTextAreaElement>> = {};
+  private credentialDataInputs: Record<string, HTMLInputElement | HTMLTextAreaElement> = {};
   private detailUrlInputs: HTMLInputElement[] = [];
   private detailsSaveButtonEl: HTMLButtonElement | null = null;
   private pendingDetailFocusTarget: DetailFocusTarget | null = null;
@@ -98,8 +151,8 @@ export class PasswordManagerModal extends Modal {
 
   constructor(
     app: App,
-    private readonly plugin: PasswordManagerPlugin,
-    options: { mode?: PasswordManagerModalMode } = {},
+    private readonly plugin: CredentialManagerPlugin,
+    options: { mode?: CredentialManagerModalMode } = {},
   ) {
     super(app);
     this.mode = options.mode ?? plugin.data.view.lastMode;
@@ -231,7 +284,7 @@ export class PasswordManagerModal extends Modal {
     window.setTimeout(() => this.contentEl.focus(), 0);
   }
 
-  switchToMode(mode: PasswordManagerModalMode) {
+  switchToMode(mode: CredentialManagerModalMode) {
     if (this.mode === mode) {
       return;
     }
@@ -582,7 +635,7 @@ export class PasswordManagerModal extends Modal {
     return this.isTrashMode() ? this.plugin.getTrashItem(itemId) : this.plugin.getItem(itemId);
   }
 
-  private getModeGroups(): PasswordGroup[] {
+  private getModeGroups(): CredentialGroup[] {
     return this.isTrashMode() ? this.plugin.getTrashGroups() : this.plugin.getSortedGroups();
   }
 
@@ -590,7 +643,7 @@ export class PasswordManagerModal extends Modal {
     return this.isTrashMode() ? this.plugin.getTrashItemsByGroup(groupId) : this.plugin.getSortedItemsByGroup(groupId);
   }
 
-  private getTrashDateKey(item: DeletedPasswordItem) {
+  private getTrashDateKey(item: DeletedCredentialItem) {
     return new Date(item.deletedAt).toISOString().slice(0, 10);
   }
 
@@ -837,7 +890,7 @@ export class PasswordManagerModal extends Modal {
 
     const actions = header.createDiv({ cls: 'pwm-actions' });
     if (!this.isTrashMode()) {
-      this.plugin.createIconButton(actions, 'plus', PWM_TEXT.ADD_ITEM, async () => {
+      const addItemButton = this.plugin.createIconButton(actions, 'plus', PWM_TEXT.ADD_ITEM, async () => {
         if (!this.selectedGroupId) {
           new Notice(PWM_TEXT.SELECT_GROUP_FIRST);
           return;
@@ -850,11 +903,26 @@ export class PasswordManagerModal extends Modal {
         if (!allowed) {
           return;
         }
-        const item = this.plugin.createItem(this.selectedGroupId);
-        this.selectedItemId = item.id;
-        this.resetItemSelection(item.id);
-        await this.plugin.savePluginData();
-        this.render();
+        const menu = new Menu();
+        CREDENTIAL_TYPES.forEach((credentialType) => {
+          menu.addItem((menuItem) => {
+            menuItem.setIcon(CREDENTIAL_TYPE_ICONS[credentialType.value]);
+            menuItem.setTitle(credentialType.label);
+            menuItem.onClick(async () => {
+              const item = this.plugin.createItem(this.selectedGroupId, credentialType.value);
+              this.selectedItemId = item.id;
+              this.resetItemSelection(item.id);
+              await this.plugin.savePluginData();
+              this.render();
+            });
+          });
+        });
+        const buttonRect = addItemButton.getBoundingClientRect();
+        const menuWidth = 180;
+        const margin = 8;
+        const x = Math.min(buttonRect.left, window.innerWidth - menuWidth - margin);
+        const y = Math.min(buttonRect.bottom, window.innerHeight - margin);
+        menu.showAtPosition({ x: Math.max(margin, x), y: Math.max(margin, y) });
       });
     }
     const itemSortOptions = this.isTrashMode() ? TRASH_ITEM_SORT_OPTIONS : ITEM_SORT_OPTIONS;
@@ -967,12 +1035,19 @@ export class PasswordManagerModal extends Modal {
 
         const body = row.createDiv({ cls: 'pwm-item-body' });
         const meta = body.createDiv({ cls: 'pwm-item-meta' });
-        meta.createDiv({ text: item.title || PWM_TEXT.UNTITLED_ITEM, cls: 'pwm-item-title' });
+        const titleRow = meta.createDiv({ cls: 'pwm-item-title-row' });
+        const typeIcon = titleRow.createSpan({
+          cls: 'pwm-credential-type-icon',
+          attr: { 'aria-label': this.getCredentialTypeLabel(item.type) },
+        });
+        setIcon(typeIcon, CREDENTIAL_TYPE_ICONS[item.type]);
+        titleRow.createDiv({ text: item.title || PWM_TEXT.UNTITLED_ITEM, cls: 'pwm-item-title' });
+        this.renderExpirationStatus(titleRow, item);
         this.renderItemMeta(meta, item);
 
         if (!this.isTrashMode()) {
           const rowActions = row.createDiv({ cls: 'pwm-item-row-actions pwm-item-row-actions-bottom' });
-          this.plugin.createIconButton(rowActions, 'copy-plus', PWM_TEXT.COPY_ITEM, async () => {
+          this.plugin.createIconButton(rowActions, 'copy-plus', PWM_TEXT.CLONE_ITEM, async () => {
             const allowed = await this.ensureWriteAccess();
             if (!allowed) {
               return;
@@ -984,7 +1059,7 @@ export class PasswordManagerModal extends Modal {
             this.selectedItemId = copiedItem.id;
             this.resetItemSelection(copiedItem.id);
             await this.plugin.savePluginData();
-            new Notice(PWM_TEXT.COPIED_ITEM);
+            new Notice(PWM_TEXT.CLONED_ITEM);
             this.render();
           });
         }
@@ -1051,7 +1126,16 @@ export class PasswordManagerModal extends Modal {
     this.detailsSaveButtonEl = null;
 
     const header = container.createDiv({ cls: 'pwm-header' });
-    header.createEl('h3', { text: PWM_TEXT.DETAILS });
+    const item = this.getCurrentItem(this.selectedItemId);
+    const detailsTitle = header.createDiv({ cls: 'pwm-details-title' });
+    const detailsIcon = detailsTitle.createSpan({
+      cls: 'pwm-credential-type-icon',
+      attr: { 'aria-label': item ? this.getCredentialTypeLabel(item.type) : PWM_TEXT.DETAILS },
+    });
+    if (item) {
+      setIcon(detailsIcon, CREDENTIAL_TYPE_ICONS[item.type]);
+    }
+    detailsTitle.createEl('h3', { text: PWM_TEXT.DETAILS });
     const actions = header.createDiv({ cls: 'pwm-actions' });
     this.plugin.createIconButton(actions, 'copy', PWM_TEXT.COPY_PASSWORD_INFO, async () => {
       if (!this.selectedItemId) {
@@ -1071,7 +1155,6 @@ export class PasswordManagerModal extends Modal {
     const body = container.createDiv({ cls: 'pwm-details-body' });
     this.detailsBodyEl = body;
     const detail = body.createDiv({ cls: 'pwm-detail' });
-    const item = this.getCurrentItem(this.selectedItemId);
     if (!item) {
       this.detailsDraftItemId = '';
       this.detailsDirty = false;
@@ -1085,6 +1168,7 @@ export class PasswordManagerModal extends Modal {
 
     this.ensureDetailsDraft(item);
     this.detailInputs = {};
+    this.credentialDataInputs = {};
     this.detailUrlInputs = [];
 
     const titleInput = this.createTextField(detail, PWM_TEXT.TITLE, this.detailsDraft.title, [], { leadingIcon: 'text-cursor-input' });
@@ -1095,36 +1179,35 @@ export class PasswordManagerModal extends Modal {
       this.updateDetailsDirtyState();
     });
 
-    const usernameInput = this.createTextField(
-      detail,
-      PWM_TEXT.USERNAME,
-      this.detailsDraft.username,
-      [
-        {
-          icon: 'copy',
-          label: PWM_TEXT.COPY_USERNAME,
-          onClick: async (input) => {
-            await navigator.clipboard.writeText(input.value);
-            new Notice(PWM_TEXT.COPIED_USERNAME);
-          },
-        },
-      ],
-      { leadingIcon: 'user-round' },
-    );
-    usernameInput.disabled = this.isTrashMode();
-    this.detailInputs.username = usernameInput;
-    usernameInput.addEventListener('input', () => {
-      this.detailsDraft.username = usernameInput.value;
+    const expirationField = detail.createDiv({ cls: 'pwm-field' });
+    expirationField.createEl('label', { text: PWM_TEXT.EXPIRATION_DATE });
+    const expirationInput = expirationField.createEl('input', {
+      type: 'date',
+      value: this.detailsDraft.expiresAt,
+    });
+    expirationInput.disabled = this.isTrashMode();
+    this.bindDetailFocus(expirationInput);
+    this.detailInputs.expiresAt = expirationInput;
+    expirationInput.addEventListener('input', () => {
+      this.detailsDraft.expiresAt = expirationInput.value;
       this.updateDetailsDirtyState();
     });
+    this.renderExpirationStatus(expirationField, item);
 
-    const passwordInput = this.createPasswordField(detail, this.detailsDraft.password);
-    passwordInput.disabled = this.isTrashMode();
-    this.detailInputs.password = passwordInput;
-    passwordInput.addEventListener('input', () => {
-      this.detailsDraft.password = passwordInput.value;
-      this.updateDetailsDirtyState();
-    });
+    const typeInput = this.createTextField(
+      detail,
+      'Credential type',
+      this.getCredentialTypeLabel(item.type),
+      [],
+      { leadingIcon: CREDENTIAL_TYPE_ICONS[item.type] },
+    );
+    typeInput.readOnly = true;
+
+    if (item.type === 'login') {
+      this.renderLoginFields(detail);
+    } else {
+      this.renderCredentialDataFields(detail);
+    }
 
     this.renderUrlFields(detail);
 
@@ -1154,6 +1237,98 @@ export class PasswordManagerModal extends Modal {
     this.restorePendingDetailFocus();
     this.renderTagsFooter(detail, item);
     this.renderDetailsBottomToolbar(body);
+  }
+
+  private renderLoginFields(container: HTMLElement) {
+    const usernameInput = this.createTextField(container, PWM_TEXT.USERNAME, this.detailsDraft.username, [], { leadingIcon: 'user-round' });
+    usernameInput.disabled = this.isTrashMode();
+    this.detailInputs.username = usernameInput;
+    usernameInput.addEventListener('input', () => {
+      this.detailsDraft.username = usernameInput.value;
+      this.updateDetailsDirtyState();
+    });
+
+    const passwordInput = this.createPasswordField(container, this.detailsDraft.password);
+    passwordInput.disabled = this.isTrashMode();
+    this.detailInputs.password = passwordInput;
+    passwordInput.addEventListener('input', () => {
+      this.detailsDraft.password = passwordInput.value;
+      this.updateDetailsDirtyState();
+    });
+  }
+
+  private renderCredentialDataFields(container: HTMLElement) {
+    Object.entries(this.detailsDraft.data).forEach(([key, value]) => {
+      const label = this.getCredentialFieldLabel(this.detailsDraft.type, key);
+      const isSecret = this.isSensitiveCredentialField(key);
+      const isMultiline = this.detailsDraft.type === 'generic-secret' && key === 'value';
+      const copyAction: PwmFieldAction = {
+        icon: 'copy',
+        label: PWM_TEXT.COPY_PASSWORD,
+        onClick: async (input) => {
+          await navigator.clipboard.writeText(input.value);
+          new Notice(PWM_TEXT.COPIED_PASSWORD);
+        },
+      };
+      // createSecretField already renders its own reveal toggle; only the textarea variant needs one here.
+      const actions: PwmFieldAction[] = isMultiline
+        ? [
+          {
+            icon: 'eye',
+            label: PWM_TEXT.SHOW_PASSWORD,
+            onClick: async (input, button) => {
+              const revealed = input.hasClass('pwm-secret-textarea-hidden');
+              input.toggleClass('pwm-secret-textarea-hidden', !revealed);
+              setIcon(button, revealed ? 'eye-off' : 'eye');
+              button.setAttr('aria-label', revealed ? PWM_TEXT.HIDE_PASSWORD : PWM_TEXT.SHOW_PASSWORD);
+            },
+          },
+          copyAction,
+        ]
+        : isSecret
+          ? [copyAction]
+          : [];
+      const input = isMultiline
+        ? this.createSecretTextareaField(container, label, value, actions)
+        : isSecret
+          ? this.createSecretField(container, label, value, actions)
+          : this.createTextField(container, label, value, [], { leadingIcon: 'text-cursor-input' });
+      input.disabled = this.isTrashMode();
+      this.credentialDataInputs[key] = input;
+      input.addEventListener('input', () => {
+        this.detailsDraft.data[key] = input.value;
+        this.updateDetailsDirtyState();
+      });
+    });
+  }
+
+  private getCredentialFieldLabel(type: CredentialType, key: string) {
+    const labels: Record<string, string> = {
+      clientId: PWM_TEXT.CLIENT_ID,
+      tenantId: PWM_TEXT.TENANT_ID,
+      tokenName: PWM_TEXT.TOKEN_NAME,
+      tokenValuePrimary: PWM_TEXT.TOKEN_VALUE_PRIMARY,
+      tokenValueSecondary: PWM_TEXT.TOKEN_VALUE_SECONDARY,
+      provider: PWM_TEXT.PROVIDER,
+      databaseServiceName: PWM_TEXT.DATABASE_SERVICE_NAME,
+      schema: PWM_TEXT.SCHEMA,
+      host: PWM_TEXT.HOST,
+      certName: PWM_TEXT.CERT_NAME,
+      thumbprint: PWM_TEXT.THUMBPRINT,
+      keyName: PWM_TEXT.KEY_NAME,
+      accountName: PWM_TEXT.ACCOUNT_NAME,
+      name: PWM_TEXT.WEBHOOK_NAME,
+      fieldName: PWM_TEXT.FIELD_NAME,
+      value: PWM_TEXT.VALUE,
+    };
+    if (type === 'login' && key === 'username') {
+      return PWM_TEXT.USERNAME;
+    }
+    return labels[key] ?? key.replace(/[A-Z]/g, (letter) => ` ${letter}`).replace(/^./, (letter) => letter.toUpperCase());
+  }
+
+  private isSensitiveCredentialField(key: string) {
+    return /password|clientSecret|tokenValue|secretAccessKey|serviceAccountKey|signingSecret|privateKey|passphrase|certificatePem|value/i.test(key);
   }
 
   private renderUrlFields(container: HTMLElement) {
@@ -1232,7 +1407,7 @@ export class PasswordManagerModal extends Modal {
     return this.detailsDraft.urls.map((url) => url.trim()).filter(Boolean);
   }
 
-  private renderTagsFooter(container: HTMLElement, item: PasswordItem) {
+  private renderTagsFooter(container: HTMLElement, item: CredentialItem) {
     const footer = container.createDiv({ cls: 'pwm-footer-actions pwm-tags-footer' });
     const header = footer.createDiv({ cls: 'pwm-tags-header' });
     header.createDiv({ cls: 'pwm-tags-label', text: PWM_TEXT.TAGS });
@@ -1337,22 +1512,28 @@ export class PasswordManagerModal extends Modal {
     });
   }
 
-  private renderItemMeta(container: HTMLElement, item: PasswordItem) {
-    const primaryUrl = item.urls[0] ?? '';
-    if (this.plugin.data.settings.showItemUsername) {
-      container.createDiv({ text: `${PWM_TEXT.USERNAME}：${item.username}`, cls: 'pwm-item-subtitle' });
-    }
-    if (this.plugin.data.settings.showItemUrl) {
+  private renderItemMeta(container: HTMLElement, item: CredentialItem) {
+    CREDENTIAL_SUMMARY_FIELDS[item.type].forEach((key) => {
+      const value = (item.type === 'login' && key === 'username' ? item.username : item.data[key])?.trim();
+      if (value) {
+        container.createDiv({ text: `${this.getCredentialFieldLabel(item.type, key)}：${value}`, cls: 'pwm-item-subtitle' });
+      }
+    });
+
+    const primaryUrl = (item.urls[0] || item.data.url || '').trim();
+    if (this.plugin.data.settings.showItemUrl && primaryUrl) {
       container.createDiv({ text: `${PWM_TEXT.URL}：${primaryUrl}`, cls: 'pwm-item-subtitle' });
     }
-    if (this.plugin.data.settings.showItemNotes) {
+    if (this.plugin.data.settings.showItemNotes && item.notes.trim()) {
       container.createDiv({ text: `${PWM_TEXT.NOTES}：${item.notes}`, cls: 'pwm-item-subtitle' });
     }
     if (this.plugin.data.settings.showItemGroupTags) {
       const groups = this.getItemGroups(item);
       if (groups.length) {
-        const tagRow = container.createDiv({ cls: 'pwm-item-subtitle pwm-item-tags-row' });
-        tagRow.createSpan({ text: `${PWM_TEXT.TAGS}：` });
+        const tagRow = container.createDiv({
+          cls: 'pwm-item-subtitle pwm-item-tags-row',
+          attr: { 'aria-label': PWM_TEXT.TAGS },
+        });
         const tagList = tagRow.createDiv({ cls: 'pwm-item-tags' });
         groups.forEach((group) => {
           const tag = tagList.createEl('a', { cls: 'tag pwm-item-group-tag', href: '#' });
@@ -1361,6 +1542,10 @@ export class PasswordManagerModal extends Modal {
         });
       }
     }
+  }
+
+  private getCredentialTypeLabel(type: CredentialType) {
+    return CREDENTIAL_TYPES.find((credentialType) => credentialType.value === type)?.label ?? type;
   }
 
   private createTextField(
@@ -1399,8 +1584,21 @@ export class PasswordManagerModal extends Modal {
   }
 
   private createPasswordField(container: HTMLElement, value: string) {
+    return this.createSecretField(container, PWM_TEXT.PASSWORD, value, [
+      {
+        icon: 'copy',
+        label: PWM_TEXT.COPY_PASSWORD,
+        onClick: async (input) => {
+          await navigator.clipboard.writeText(input.value);
+          new Notice(PWM_TEXT.COPIED_PASSWORD);
+        },
+      },
+    ]);
+  }
+
+  private createSecretField(container: HTMLElement, label: string, value: string, actions: PwmFieldAction[] = []) {
     const field = container.createDiv({ cls: 'pwm-field' });
-    field.createEl('label', { text: PWM_TEXT.PASSWORD });
+    field.createEl('label', { text: label });
 
     const row = field.createDiv({ cls: 'pwm-input-row has-leading-icon has-floating-actions' });
     const prefix = row.createDiv({ cls: 'pwm-input-prefix' });
@@ -1409,19 +1607,26 @@ export class PasswordManagerModal extends Modal {
     const input = row.createEl('input', { type: 'password', value, cls: 'pwm-password-input' });
     this.bindDetailFocus(input);
 
-    const actions = row.createDiv({ cls: 'pwm-inline-actions pwm-floating-actions' });
-    const toggleButton = this.plugin.createIconButton(actions, 'eye', PWM_TEXT.SHOW_PASSWORD, () => {
+    const actionList = row.createDiv({ cls: 'pwm-inline-actions pwm-floating-actions' });
+    const toggleButton = this.plugin.createIconButton(actionList, 'eye', PWM_TEXT.SHOW_PASSWORD, () => {
       const isHidden = input.type === 'password';
       input.type = isHidden ? 'text' : 'password';
       setIcon(toggleButton, isHidden ? 'eye-off' : 'eye');
       toggleButton.setAttr('aria-label', isHidden ? PWM_TEXT.HIDE_PASSWORD : PWM_TEXT.SHOW_PASSWORD);
     });
-    this.plugin.createIconButton(actions, 'copy', PWM_TEXT.COPY_PASSWORD, async () => {
-      await navigator.clipboard.writeText(input.value);
-      new Notice(PWM_TEXT.COPIED_PASSWORD);
+    actions.forEach((action) => {
+      const button = this.plugin.createIconButton(actionList, action.icon, action.label, async () => {
+        await action.onClick(input, button);
+      });
     });
 
     return input;
+  }
+
+  private createSecretTextareaField(container: HTMLElement, label: string, value: string, actions: PwmFieldAction[] = []) {
+    const textarea = this.createTextareaField(container, label, value, actions);
+    textarea.addClasses(['pwm-secret-textarea', 'pwm-secret-textarea-hidden']);
+    return textarea;
   }
 
   private createTextareaField(
@@ -1471,6 +1676,7 @@ export class PasswordManagerModal extends Modal {
       this.detailInputs.title,
       this.detailInputs.username,
       this.detailInputs.password,
+      this.detailInputs.expiresAt,
       ...this.detailUrlInputs,
       this.detailInputs.notes,
     ].filter((input): input is HTMLInputElement | HTMLTextAreaElement => !!input && !input.disabled);
@@ -1506,15 +1712,22 @@ export class PasswordManagerModal extends Modal {
     this.detailsDraft.title = this.detailInputs.title?.value ?? this.detailsDraft.title;
     this.detailsDraft.username = this.detailInputs.username?.value ?? this.detailsDraft.username;
     this.detailsDraft.password = this.detailInputs.password?.value ?? this.detailsDraft.password;
+    this.detailsDraft.expiresAt = this.detailInputs.expiresAt?.value ?? this.detailsDraft.expiresAt;
+    Object.entries(this.credentialDataInputs).forEach(([key, input]) => {
+      this.detailsDraft.data[key] = input.value;
+    });
     this.detailsDraft.urls = this.detailUrlInputs.map((input) => input.value);
     this.detailsDraft.notes = this.detailInputs.notes?.value ?? this.detailsDraft.notes;
   }
 
-  private hasDetailsDraftChanged(item: PasswordItem) {
+  private hasDetailsDraftChanged(item: CredentialItem) {
     const normalizedUrls = this.getNormalizedDraftUrls();
     return item.title !== this.detailsDraft.title
       || item.username !== this.detailsDraft.username
       || item.password !== this.detailsDraft.password
+      || item.type !== this.detailsDraft.type
+      || Object.entries(this.detailsDraft.data).some(([key, value]) => item.data[key] !== value)
+      || (item.expiresAt ?? '') !== this.detailsDraft.expiresAt
       || item.notes !== this.detailsDraft.notes
       || item.urls.length !== normalizedUrls.length
       || item.urls.some((url, index) => url !== normalizedUrls[index]);
@@ -1583,7 +1796,7 @@ export class PasswordManagerModal extends Modal {
     return this.saveSelectedItemDetails({ silent: true, refreshItems: false });
   }
 
-  private ensureDetailsDraft(item: PasswordItem | DeletedPasswordItem) {
+  private ensureDetailsDraft(item: CredentialItem | DeletedCredentialItem) {
     if (this.detailsDraftItemId === item.id) {
       return;
     }
@@ -1591,8 +1804,11 @@ export class PasswordManagerModal extends Modal {
     this.detailsDraftItemId = item.id;
     this.detailsDraft = {
       title: item.title,
+      type: item.type,
+      data: { ...item.data },
       username: item.username,
       password: item.password,
+      expiresAt: item.expiresAt ?? '',
       urls: item.urls.length ? [...item.urls] : [''],
       notes: item.notes,
     };
@@ -1629,8 +1845,11 @@ export class PasswordManagerModal extends Modal {
         return false;
       }
       this.plugin.updateItem(item.id, {
+        type: this.detailsDraft.type,
+        data: { ...this.detailsDraft.data },
         username: this.detailsDraft.username,
         password: this.detailsDraft.password,
+        expiresAt: this.detailsDraft.expiresAt || undefined,
         urls: normalizedUrls,
         notes: this.detailsDraft.notes,
       });
@@ -1648,6 +1867,24 @@ export class PasswordManagerModal extends Modal {
     } finally {
       this.isSavingDetails = false;
     }
+  }
+
+  private renderExpirationStatus(container: HTMLElement, item: CredentialItem | DeletedCredentialItem) {
+    const state = getCredentialExpirationState(item.expiresAt);
+    if (state.status === 'no-expiration') {
+      return;
+    }
+
+    const label = state.status === 'expired'
+      ? PWM_TEXT.EXPIRED
+      : state.status === 'expiring-soon'
+        ? PWM_TEXT.EXPIRING_SOON
+        : PWM_TEXT.EXPIRES_ON;
+    const status = container.createDiv({
+      cls: `pwm-expiration-status pwm-expiration-${state.status}`,
+      attr: { 'aria-label': `${label}: ${item.expiresAt}` },
+    });
+    status.createSpan({ text: `${label}: ${item.expiresAt}` });
   }
 
   private createSortMenuButton(
@@ -1692,8 +1929,7 @@ export class PasswordManagerModal extends Modal {
 
       const menu = new Menu();
       const settings = this.plugin.data.settings;
-      const actions: Array<{ key: 'showItemUsername' | 'showItemUrl' | 'showItemGroupTags' | 'showItemNotes'; title: string }> = [
-        { key: 'showItemUsername', title: PWM_TEXT.ITEM_DISPLAY_USERNAME },
+      const actions: Array<{ key: 'showItemUrl' | 'showItemGroupTags' | 'showItemNotes'; title: string }> = [
         { key: 'showItemUrl', title: PWM_TEXT.ITEM_DISPLAY_URL },
         { key: 'showItemGroupTags', title: PWM_TEXT.ITEM_DISPLAY_GROUP_TAGS },
         { key: 'showItemNotes', title: PWM_TEXT.ITEM_DISPLAY_NOTES },
@@ -1715,7 +1951,7 @@ export class PasswordManagerModal extends Modal {
     });
   }
 
-  private async handleGroupSelection(groupId: string, event: MouseEvent, groups: PasswordGroup[]) {
+  private async handleGroupSelection(groupId: string, event: MouseEvent, groups: CredentialGroup[]) {
     const saved = await this.flushSelectedItemDetailsBeforeNavigate();
     if (!saved) {
       return;
@@ -1763,7 +1999,7 @@ export class PasswordManagerModal extends Modal {
     this.render();
   }
 
-  private async handleItemSelection(itemId: string, event: MouseEvent, items: Array<PasswordItem | DeletedPasswordItem>) {
+  private async handleItemSelection(itemId: string, event: MouseEvent, items: Array<CredentialItem | DeletedCredentialItem>) {
     const saved = await this.flushSelectedItemDetailsBeforeNavigate();
     if (!saved) {
       return;
@@ -2102,7 +2338,7 @@ export class PasswordManagerModal extends Modal {
     });
   }
 
-  private getVisibleGroups(): PasswordGroup[] {
+  private getVisibleGroups(): CredentialGroup[] {
     const keywords = parseSearchKeywords(this.keyword);
     const groups = this.getModeGroups();
     if (!keywords.length) {
@@ -2111,7 +2347,7 @@ export class PasswordManagerModal extends Modal {
     return groups.filter((group) => this.matchesGroupKeyword(group, keywords) || this.getVisibleItems(group.id).length > 0);
   }
 
-  private getVisibleItems(groupId: string): Array<PasswordItem | DeletedPasswordItem> {
+  private getVisibleItems(groupId: string): Array<CredentialItem | DeletedCredentialItem> {
     const keywords = parseSearchKeywords(this.keyword);
     const items = this.prioritizePinnedItems(this.getModeItemsByGroup(groupId));
 
@@ -2119,7 +2355,7 @@ export class PasswordManagerModal extends Modal {
       return items;
     }
 
-    const group = this.getModeGroups().find((currentGroup: PasswordGroup) => currentGroup.id === groupId);
+    const group = this.getModeGroups().find((currentGroup: CredentialGroup) => currentGroup.id === groupId);
     if (group && this.matchesGroupKeyword(group, keywords)) {
       return items;
     }
@@ -2137,19 +2373,19 @@ export class PasswordManagerModal extends Modal {
     return itemIds.size;
   }
 
-  private prioritizePinnedItems(items: Array<PasswordItem | DeletedPasswordItem>) {
+  private prioritizePinnedItems(items: Array<CredentialItem | DeletedCredentialItem>) {
     return [...items].sort((left, right) => Number(right.pinned) - Number(left.pinned));
   }
 
-  private matchesGroupKeyword(group: PasswordGroup, keywords: string[]) {
+  private matchesGroupKeyword(group: CredentialGroup, keywords: string[]) {
     return matchesAllKeywordsInValue(group.name, keywords);
   }
 
-  private matchesItemKeyword(item: PasswordItem | DeletedPasswordItem, keywords: string[]) {
+  private matchesItemKeyword(item: CredentialItem | DeletedCredentialItem, keywords: string[]) {
     const groupNames = this.getItemGroups(item).map((group) => group.name);
     const trashDate = this.isTrashMode() && 'deletedAt' in item ? this.getTrashDateKey(item) : '';
     return matchesAnyFieldKeywords(
-      [item.title, item.username, item.urls.join(' '), item.notes, ...groupNames, trashDate],
+      [item.title, this.getCredentialTypeLabel(item.type), item.username, item.urls.join(' '), item.notes, ...groupNames, trashDate],
       keywords,
     );
   }
@@ -2157,7 +2393,7 @@ export class PasswordManagerModal extends Modal {
   private getResolvedSelectedGroupId(preferredGroupId?: string) {
     const visibleGroups = this.getVisibleGroups();
     const nextGroupId = preferredGroupId || this.selectedGroupId;
-    if (visibleGroups.some((group: PasswordGroup) => group.id === nextGroupId)) {
+    if (visibleGroups.some((group: CredentialGroup) => group.id === nextGroupId)) {
       return nextGroupId;
     }
     return visibleGroups[0]?.id ?? '';
@@ -2173,18 +2409,18 @@ export class PasswordManagerModal extends Modal {
     return items[0]?.id ?? '';
   }
 
-  private getPrimarySelectedGroupId(item: PasswordItem) {
+  private getPrimarySelectedGroupId(item: CredentialItem) {
     if (item.groupIds.includes(this.selectedGroupId)) {
       return this.selectedGroupId;
     }
     return item.groupIds[0] ?? '';
   }
 
-  private getItemGroups(item: PasswordItem | DeletedPasswordItem) {
+  private getItemGroups(item: CredentialItem | DeletedCredentialItem) {
     const groups = new Map(this.plugin.data.groups.map((group) => [group.id, group]));
     const matchedGroups = item.groupIds
       .map((groupId) => groups.get(groupId))
-      .filter((group): group is PasswordGroup => !!group);
+      .filter((group): group is CredentialGroup => !!group);
     if (!('deletedAt' in item)) {
       return matchedGroups;
     }

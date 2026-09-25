@@ -1,6 +1,6 @@
 import { Notice } from 'obsidian';
 import { DEFAULT_DATA } from '../data/defaults';
-import { normalizePasswordManagerData, normalizePluginConfig, normalizeUrls } from '../data/normalize';
+import { normalizeCredentialManagerData, normalizePluginConfig, normalizeUrls } from '../data/normalize';
 import {
   assignItemToGroup,
   createGroup,
@@ -8,6 +8,7 @@ import {
   deleteItem,
   duplicateItem,
   getFallbackGroupId,
+
   moveGroup,
   moveGroups,
   moveItemWithinGroup,
@@ -17,29 +18,29 @@ import {
   updateGroupName,
   updateItem,
   updateItemTitle,
-} from '../data/password-library-service';
-import { PasswordStorageStore } from '../data/storage-store';
+} from '../data/credential-library-service';
+import { CredentialStorageStore } from '../data/storage-store';
 import { PWM_TEXT } from '../lang';
-import { formatPasswordItemForCopy } from '../util/copy-format';
+import { formatCredentialItemForCopy } from '../util/copy-format';
 import { isEncryptedLibraryPayload } from '../util/encryption';
 import { sortGroups, sortDeletedItems, sortItems } from '../util/sort';
 import type {
-  DeletedPasswordItem,
-  PasswordGroup,
-  PasswordItem,
-  PasswordManagerData,
+  DeletedCredentialItem,
+  CredentialGroup,
+  CredentialItem,
+  CredentialManagerData,
   PwmSortMode,
 } from '../util/types';
-import type { PasswordManagerSettings, PasswordPluginConfig } from '../settings';
+import type { CredentialManagerSettings, CredentialPluginConfig } from '../settings';
 
-interface PasswordPluginPersistence {
-  loadLegacyData: () => Promise<unknown>;
-  savePluginConfig: (config: PasswordPluginConfig) => Promise<void>;
+interface CredentialPluginPersistence {
+  loadPluginConfig: () => Promise<unknown>;
+  savePluginConfig: (config: CredentialPluginConfig) => Promise<void>;
 }
 
-export class PasswordPluginContext {
-  data: PasswordManagerData = structuredClone(DEFAULT_DATA);
-  pluginConfig: PasswordPluginConfig = normalizePluginConfig(undefined);
+export class CredentialPluginContext {
+  data: CredentialManagerData = structuredClone(DEFAULT_DATA);
+  pluginConfig: CredentialPluginConfig = normalizePluginConfig(undefined);
 
   private encryptionPassword = '';
   private lastVerifiedAt = 0;
@@ -48,9 +49,8 @@ export class PasswordPluginContext {
   private ensureEncryptionWriteAccess: () => Promise<boolean> = () => Promise.resolve(true);
 
   constructor(
-    private readonly storageStore: PasswordStorageStore,
-    private readonly persistence: PasswordPluginPersistence,
-    private readonly pluginId: string,
+    private readonly storageStore: CredentialStorageStore,
+    private readonly persistence: CredentialPluginPersistence,
   ) {}
 
   setEncryptionWriteGuard(handler: () => Promise<boolean>) {
@@ -58,9 +58,8 @@ export class PasswordPluginContext {
   }
 
   async loadPluginData() {
-    const legacyPluginData = await this.persistence.loadLegacyData();
-    this.pluginConfig = normalizePluginConfig(legacyPluginData);
-    await this.storageStore.migrateLegacyTrash(this.pluginConfig, this.pluginId);
+    const storedConfig = await this.persistence.loadPluginConfig();
+    this.pluginConfig = normalizePluginConfig(storedConfig);
 
     const stored = await this.storageStore.readStoredData(this.pluginConfig);
     this.hasEncryptedStorage = this.pluginConfig.encryptionEnabled && isEncryptedLibraryPayload(stored);
@@ -71,13 +70,8 @@ export class PasswordPluginContext {
       return;
     }
 
-    let storedData = await this.storageStore.loadData(this.pluginConfig);
-    if (!storedData && legacyPluginData && typeof legacyPluginData === 'object' && ('groups' in legacyPluginData || 'items' in legacyPluginData)) {
-      storedData = normalizePasswordManagerData(legacyPluginData);
-      await this.storageStore.saveData(this.pluginConfig, storedData, this.encryptionPassword || undefined);
-    }
-
-    this.data = normalizePasswordManagerData(storedData ?? DEFAULT_DATA);
+    const storedData = await this.storageStore.loadData(this.pluginConfig);
+    this.data = normalizeCredentialManagerData(storedData ?? DEFAULT_DATA);
     reindexOrders(this.data);
     this.hasUnlockedData = true;
   }
@@ -153,22 +147,22 @@ export class PasswordPluginContext {
     }
   }
 
-  updatePluginConfig(patch: Partial<PasswordPluginConfig>) {
+  updatePluginConfig(patch: Partial<CredentialPluginConfig>) {
     this.pluginConfig = normalizePluginConfig({
       ...this.pluginConfig,
       ...patch,
     });
   }
 
-  updateSettings(patch: Partial<PasswordManagerSettings>) {
+  updateSettings(patch: Partial<CredentialManagerSettings>) {
     this.data.settings = {
       ...this.data.settings,
       ...patch,
     };
   }
 
-  replaceData(data: PasswordManagerData) {
-    this.data = normalizePasswordManagerData(data);
+  replaceData(data: CredentialManagerData) {
+    this.data = normalizeCredentialManagerData(data);
     reindexOrders(this.data);
     this.hasUnlockedData = true;
   }
@@ -194,7 +188,7 @@ export class PasswordPluginContext {
     return !this.hasEncryptedStorage || this.hasUnlockedData;
   }
 
-  setEncryptionState(patch: Partial<ReturnType<PasswordPluginContext['getEncryptionState']>>) {
+  setEncryptionState(patch: Partial<ReturnType<CredentialPluginContext['getEncryptionState']>>) {
     if (patch.encryptionPassword !== undefined) {
       this.encryptionPassword = patch.encryptionPassword;
     }
@@ -217,8 +211,8 @@ export class PasswordPluginContext {
     return updateGroupName(this.data, groupId, name);
   }
 
-  createItem(groupId: string) {
-    return createItem(this.data, groupId);
+  createItem(groupId: string, type?: import('../util/types').CredentialType) {
+    return createItem(this.data, groupId, type);
   }
 
   duplicateItem(itemId: string) {
@@ -229,10 +223,9 @@ export class PasswordPluginContext {
     return updateItemTitle(this.data, itemId, title);
   }
 
-  updateItem(itemId: string, patch: Partial<Omit<PasswordItem, 'id'>>) {
+  updateItem(itemId: string, patch: Partial<Omit<CredentialItem, 'id'>>) {
     updateItem(this.data, itemId, patch);
   }
-
   setGroupSort(mode: PwmSortMode) {
     this.data.view.groupSort = mode;
   }
@@ -252,7 +245,7 @@ export class PasswordPluginContext {
     }
 
     let changed = false;
-    const remainingItems: PasswordItem[] = [];
+    const remainingItems: CredentialItem[] = [];
     for (const item of this.data.items) {
       if (!item.groupIds.some((id) => targetGroupIds.has(id))) {
         remainingItems.push(item);
@@ -326,7 +319,7 @@ export class PasswordPluginContext {
     const { deletedAt, deletedGroupNames, ...restoredItem } = item;
     void deletedAt;
     void deletedGroupNames;
-    const nextItem: PasswordItem = {
+    const nextItem: CredentialItem = {
       ...restoredItem,
       groupIds: restoredGroupIds,
     };
@@ -353,7 +346,7 @@ export class PasswordPluginContext {
   }
 
   getTrashGroups() {
-    const groups = new Map<string, PasswordGroup>();
+    const groups = new Map<string, CredentialGroup>();
     this.data.trash.forEach((item) => {
       const key = new Date(item.deletedAt).toISOString().slice(0, 10);
       if (!groups.has(key)) {
@@ -393,7 +386,7 @@ export class PasswordPluginContext {
       return false;
     }
 
-    const content = formatPasswordItemForCopy(
+    const content = formatCredentialItemForCopy(
       item,
       this.data.groups,
       this.data.settings.copyFormat,
@@ -442,7 +435,7 @@ export class PasswordPluginContext {
     this.data.trash = this.data.trash.filter((item) => item.deletedAt >= minDeletedAt);
   }
 
-  private shouldDeleteItemDirectly(item: PasswordItem) {
+  private shouldDeleteItemDirectly(item: CredentialItem) {
     return !!item.title.trim()
       && !item.username.trim()
       && !item.password.trim()
@@ -450,7 +443,7 @@ export class PasswordPluginContext {
       && !item.notes.trim();
   }
 
-  private resolveRestoredGroupIds(item: DeletedPasswordItem) {
+  private resolveRestoredGroupIds(item: DeletedCredentialItem) {
     const restoredGroupIds: string[] = [];
     const existingGroupIds = new Set(this.data.groups.map((group) => group.id));
 

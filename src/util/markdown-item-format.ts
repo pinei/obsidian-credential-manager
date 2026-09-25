@@ -1,7 +1,7 @@
 import { PWM_TEXT } from '../lang';
-import type { PasswordCopyFormat, PasswordItem } from './types';
+import type { PasswordCopyFormat, CredentialItem } from './types';
 
-export interface PasswordItemMarkdownFormatOptions {
+export interface CredentialItemMarkdownFormatOptions {
   headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   format: PasswordCopyFormat;
   exportBlankFields?: boolean;
@@ -15,17 +15,16 @@ function wrapInlineCode(value: string) {
   const normalized = escapeMarkdownValue(value);
   return normalized ? `\`${normalized}\`` : '';
 }
-
 function wrapMarkdownLink(value: string) {
   const normalized = escapeMarkdownValue(value);
   return normalized ? `<${normalized}>` : '';
 }
 
-function getItemUrls(item: Pick<PasswordItem, 'urls'> & { url?: string }) {
+function getItemUrls(item: Pick<CredentialItem, 'urls'> & { url?: string }) {
   return item.urls.length ? item.urls : (item.url ? [item.url] : []);
 }
 
-function formatMarkdownUrls(item: Pick<PasswordItem, 'urls'> & { url?: string }) {
+function formatMarkdownUrls(item: Pick<CredentialItem, 'urls'> & { url?: string }) {
   const urls = getItemUrls(item);
   if (!urls.length) {
     return '';
@@ -36,7 +35,7 @@ function formatMarkdownUrls(item: Pick<PasswordItem, 'urls'> & { url?: string })
   return `\n${urls.map((url) => `    - ${wrapMarkdownLink(url)}`).join('\n')}`;
 }
 
-function formatCalloutUrls(item: Pick<PasswordItem, 'urls'> & { url?: string }) {
+function formatCalloutUrls(item: Pick<CredentialItem, 'urls'> & { url?: string }) {
   const urls = getItemUrls(item);
   if (!urls.length) {
     return '';
@@ -65,7 +64,7 @@ function formatCalloutIndentedValue(value: string) {
   return `\n${normalized.split('\n').map((line) => `>     ${line}`).join('\n')}`;
 }
 
-export function getMarkdownFieldLabel(key: 'username' | 'password' | 'url' | 'notes') {
+export function getMarkdownFieldLabel(key: 'username' | 'password' | 'url' | 'notes' | 'expiration') {
   switch (key) {
     case 'username':
       return PWM_TEXT.COPY_FIELD_USERNAME;
@@ -75,14 +74,16 @@ export function getMarkdownFieldLabel(key: 'username' | 'password' | 'url' | 'no
       return PWM_TEXT.COPY_FIELD_URL;
     case 'notes':
       return PWM_TEXT.COPY_FIELD_NOTES;
+    case 'expiration':
+      return PWM_TEXT.EXPIRATION_DATE;
     default:
       return '';
   }
 }
 
-export function formatPasswordItemAsMarkdown(
-  item: PasswordItem,
-  options: PasswordItemMarkdownFormatOptions,
+export function formatCredentialItemAsMarkdown(
+  item: CredentialItem,
+  options: CredentialItemMarkdownFormatOptions,
 ) {
   const { headingLevel = 3, format, exportBlankFields = true } = options;
   const headingPrefix = '#'.repeat(headingLevel);
@@ -91,11 +92,13 @@ export function formatPasswordItemAsMarkdown(
   const password = wrapInlineCode(item.password);
   const urls = format === 'callout' ? formatCalloutUrls(item) : formatMarkdownUrls(item);
   const notes = format === 'callout' ? formatCalloutIndentedValue(item.notes) : formatMarkdownIndentedValue(item.notes);
+  const expiration = wrapInlineCode(item.expiresAt ?? '');
 
   const hasUsername = !!username;
   const hasPassword = !!password;
   const hasUrls = !!urls;
   const hasNotes = !!notes;
+  const hasExpiration = !!expiration;
 
   if (format === 'callout') {
     const lines = [`> [!info] ${title}`];
@@ -111,6 +114,9 @@ export function formatPasswordItemAsMarkdown(
     }
     if (exportBlankFields || hasNotes) {
       lines.push(`> - ${getMarkdownFieldLabel('notes')}：${notes}`);
+    }
+    if (exportBlankFields || hasExpiration) {
+      lines.push(`> - ${getMarkdownFieldLabel('expiration')}：${expiration}`);
     }
 
     return lines.join('\n');
@@ -129,6 +135,9 @@ export function formatPasswordItemAsMarkdown(
   }
   if (exportBlankFields || hasNotes) {
     lines.push(`- ${getMarkdownFieldLabel('notes')}：${notes}`);
+  }
+  if (exportBlankFields || hasExpiration) {
+    lines.push(`- ${getMarkdownFieldLabel('expiration')}：${expiration}`);
   }
 
   return lines.join('\n');

@@ -1,8 +1,8 @@
 import { FileSystemAdapter, Notice, type App } from 'obsidian';
 import { PWM_TEXT } from '../lang';
 import { createPasswordVerifier, verifyPassword } from '../util/encryption';
-import type { PasswordPluginContext } from './plugin-context';
-import { PasswordPromptModal, type PasswordPromptField } from '../ui/password-prompt-modal';
+import type { CredentialPluginContext } from './plugin-context';
+import { CredentialPromptModal, type CredentialPromptField } from '../ui/credential-prompt-modal';
 
 type ElectronShellModule = {
   shell?: {
@@ -10,10 +10,10 @@ type ElectronShellModule = {
   };
 };
 
-export class PasswordEncryptionService {
+export class CredentialEncryptionService {
   constructor(
     private readonly app: App,
-    private readonly context: PasswordPluginContext,
+    private readonly context: CredentialPluginContext,
   ) { }
 
   async ensureEncryptionAccess() {
@@ -344,8 +344,8 @@ export class PasswordEncryptionService {
     return passwords?.password?.trim() ?? '';
   }
 
-  private async requestPasswords(title: string, fields: PasswordPromptField[]) {
-    return PasswordPromptModal.open(this.app, { title, fields, confirmText: PWM_TEXT.CONFIRM, cancelText: PWM_TEXT.CANCEL });
+  private async requestPasswords(title: string, fields: CredentialPromptField[]) {
+    return CredentialPromptModal.open(this.app, { title, fields, confirmText: PWM_TEXT.CONFIRM, cancelText: PWM_TEXT.CANCEL });
   }
 
   private async openFolder(path: string, successMessage?: string, failedMessage?: string) {
