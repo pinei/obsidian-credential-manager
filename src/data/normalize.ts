@@ -188,6 +188,9 @@ export function normalizeCredentialData(
     normalized.username = typeof username === 'string' ? username : normalized.username ?? '';
     normalized.password = typeof password === 'string' ? password : normalized.password ?? '';
   }
+  if (normalizeCredentialType(type) === 'certificate') {
+    delete normalized.expiresAt;
+  }
   return normalized;
 }
 

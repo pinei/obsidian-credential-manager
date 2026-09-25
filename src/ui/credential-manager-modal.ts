@@ -54,13 +54,16 @@ type CredentialSummaryField =
   | 'tenantId'
   | 'tokenName'
   | 'provider'
+  | 'engine'
   | 'databaseServiceName'
+  | 'schema'
   | 'host'
   | 'certName'
   | 'thumbprint'
   | 'keyName'
   | 'accountName'
   | 'name'
+  | 'method'
   | 'fieldName';
 const CREDENTIAL_TYPES: Array<{ value: CredentialType; label: string }> = [
   { value: 'login', label: 'Login' },
@@ -88,11 +91,11 @@ const CREDENTIAL_SUMMARY_FIELDS: Record<CredentialType, CredentialSummaryField[]
   login: ['username'],
   'app-registration': ['clientId', 'tenantId'],
   'api-token': ['tokenName', 'provider'],
-  database: ['databaseServiceName', 'host'],
+  database: ['databaseServiceName', 'host', 'engine', 'schema', 'username'],
   certificate: ['certName', 'thumbprint'],
-  'ssh-key': ['keyName', 'host'],
+  'ssh-key': ['keyName', 'host', 'username'],
   'cloud-credentials': ['provider', 'accountName'],
-  webhook: ['name'],
+  webhook: ['name', 'method'],
   'generic-secret': ['fieldName'],
 };
 type DetailFocusTarget = {
@@ -1042,7 +1045,7 @@ export class CredentialManagerModal extends Modal {
         });
         setIcon(typeIcon, CREDENTIAL_TYPE_ICONS[item.type]);
         titleRow.createDiv({ text: item.title || PWM_TEXT.UNTITLED_ITEM, cls: 'pwm-item-title' });
-        this.renderExpirationStatus(titleRow, item);
+        this.renderExpirationStatus(meta, item);
         this.renderItemMeta(meta, item);
 
         if (!this.isTrashMode()) {
@@ -1259,7 +1262,7 @@ export class CredentialManagerModal extends Modal {
 
   private renderCredentialDataFields(container: HTMLElement) {
     Object.entries(this.detailsDraft.data).forEach(([key, value]) => {
-      const label = this.getCredentialFieldLabel(this.detailsDraft.type, key);
+      const label = this.getCredentialFieldLabel(key);
       const isSecret = this.isSensitiveCredentialField(key);
       const isMultiline = this.detailsDraft.type === 'generic-secret' && key === 'value';
       const copyAction: PwmFieldAction = {
@@ -1302,14 +1305,16 @@ export class CredentialManagerModal extends Modal {
     });
   }
 
-  private getCredentialFieldLabel(type: CredentialType, key: string) {
+  private getCredentialFieldLabel(key: string) {
     const labels: Record<string, string> = {
+      username: PWM_TEXT.USERNAME,
       clientId: PWM_TEXT.CLIENT_ID,
       tenantId: PWM_TEXT.TENANT_ID,
       tokenName: PWM_TEXT.TOKEN_NAME,
       tokenValuePrimary: PWM_TEXT.TOKEN_VALUE_PRIMARY,
       tokenValueSecondary: PWM_TEXT.TOKEN_VALUE_SECONDARY,
       provider: PWM_TEXT.PROVIDER,
+      engine: PWM_TEXT.ENGINE,
       databaseServiceName: PWM_TEXT.DATABASE_SERVICE_NAME,
       schema: PWM_TEXT.SCHEMA,
       host: PWM_TEXT.HOST,
@@ -1318,12 +1323,10 @@ export class CredentialManagerModal extends Modal {
       keyName: PWM_TEXT.KEY_NAME,
       accountName: PWM_TEXT.ACCOUNT_NAME,
       name: PWM_TEXT.WEBHOOK_NAME,
+      method: PWM_TEXT.METHOD,
       fieldName: PWM_TEXT.FIELD_NAME,
       value: PWM_TEXT.VALUE,
     };
-    if (type === 'login' && key === 'username') {
-      return PWM_TEXT.USERNAME;
-    }
     return labels[key] ?? key.replace(/[A-Z]/g, (letter) => ` ${letter}`).replace(/^./, (letter) => letter.toUpperCase());
   }
 
@@ -1516,7 +1519,7 @@ export class CredentialManagerModal extends Modal {
     CREDENTIAL_SUMMARY_FIELDS[item.type].forEach((key) => {
       const value = (item.type === 'login' && key === 'username' ? item.username : item.data[key])?.trim();
       if (value) {
-        container.createDiv({ text: `${this.getCredentialFieldLabel(item.type, key)}：${value}`, cls: 'pwm-item-subtitle' });
+        container.createDiv({ text: `${this.getCredentialFieldLabel(key)}：${value}`, cls: 'pwm-item-subtitle' });
       }
     });
 
@@ -1871,15 +1874,13 @@ export class CredentialManagerModal extends Modal {
 
   private renderExpirationStatus(container: HTMLElement, item: CredentialItem | DeletedCredentialItem) {
     const state = getCredentialExpirationState(item.expiresAt);
-    if (state.status === 'no-expiration') {
+    if (state.status === 'no-expiration' || state.status === 'active') {
       return;
     }
 
     const label = state.status === 'expired'
       ? PWM_TEXT.EXPIRED
-      : state.status === 'expiring-soon'
-        ? PWM_TEXT.EXPIRING_SOON
-        : PWM_TEXT.EXPIRES_ON;
+      : PWM_TEXT.EXPIRING_SOON;
     const status = container.createDiv({
       cls: `pwm-expiration-status pwm-expiration-${state.status}`,
       attr: { 'aria-label': `${label}: ${item.expiresAt}` },
