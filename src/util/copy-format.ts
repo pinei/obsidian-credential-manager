@@ -11,11 +11,10 @@ export function formatCredentialItemForCopy(
   format: PasswordCopyFormat,
   copyBlankFields: boolean,
 ) {
-  void getGroupNames(item, groups);
-
   return formatCredentialItemAsMarkdown(item, {
     headingLevel: 3,
     format,
     exportBlankFields: copyBlankFields,
+    groupNames: getGroupNames(item, groups),
   });
 }

@@ -1,144 +1,72 @@
 import { PWM_TEXT } from '../lang';
+import { getCredentialFieldLabel } from '../credentials/schema';
 import type { PasswordCopyFormat, CredentialItem } from './types';
 
 export interface CredentialItemMarkdownFormatOptions {
   headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   format: PasswordCopyFormat;
   exportBlankFields?: boolean;
+  groupNames?: string[];
 }
 
 export function escapeMarkdownValue(value: string) {
   return value.replace(/\r\n/g, '\n').trim();
 }
 
-function wrapInlineCode(value: string) {
-  const normalized = escapeMarkdownValue(value);
-  return normalized ? `\`${normalized}\`` : '';
-}
-function wrapMarkdownLink(value: string) {
-  const normalized = escapeMarkdownValue(value);
-  return normalized ? `<${normalized}>` : '';
-}
-
-function getItemUrls(item: Pick<CredentialItem, 'urls'> & { url?: string }) {
-  return item.urls.length ? item.urls : (item.url ? [item.url] : []);
-}
-
-function formatMarkdownUrls(item: Pick<CredentialItem, 'urls'> & { url?: string }) {
-  const urls = getItemUrls(item);
-  if (!urls.length) {
-    return '';
-  }
-  if (urls.length === 1) {
-    return wrapMarkdownLink(urls[0] ?? '');
-  }
-  return `\n${urls.map((url) => `    - ${wrapMarkdownLink(url)}`).join('\n')}`;
-}
-
-function formatCalloutUrls(item: Pick<CredentialItem, 'urls'> & { url?: string }) {
-  const urls = getItemUrls(item);
-  if (!urls.length) {
-    return '';
-  }
-  if (urls.length === 1) {
-    return wrapMarkdownLink(urls[0] ?? '');
-  }
-  return `\n${urls.map((url) => `>   - ${wrapMarkdownLink(url)}`).join('\n')}`;
-}
-
-function formatMarkdownIndentedValue(value: string) {
-  const normalized = escapeMarkdownValue(value);
-  if (!normalized) {
-    return '';
-  }
-
-  return `\n${normalized.split('\n').map((line) => `    ${line}`).join('\n')}`;
-}
-
-function formatCalloutIndentedValue(value: string) {
-  const normalized = escapeMarkdownValue(value);
-  if (!normalized) {
-    return '';
-  }
-
-  return `\n${normalized.split('\n').map((line) => `>     ${line}`).join('\n')}`;
-}
-
-export function getMarkdownFieldLabel(key: 'username' | 'password' | 'url' | 'notes' | 'expiration') {
+function getMarkdownFieldLabel(key: string) {
   switch (key) {
-    case 'username':
-      return PWM_TEXT.COPY_FIELD_USERNAME;
-    case 'password':
-      return PWM_TEXT.COPY_FIELD_PASSWORD;
-    case 'url':
+    case 'type':
+      return 'Credential type';
+    case 'urls':
       return PWM_TEXT.COPY_FIELD_URL;
     case 'notes':
       return PWM_TEXT.COPY_FIELD_NOTES;
-    case 'expiration':
+    case 'expiresAt':
       return PWM_TEXT.EXPIRATION_DATE;
+    case 'pinned':
+      return 'Pinned';
+    case 'createdAt':
+      return 'Created at';
+    case 'updatedAt':
+      return 'Updated at';
+    case 'groupTags':
+      return PWM_TEXT.COPY_FIELD_GROUP_TAGS;
     default:
-      return '';
+      return key.startsWith('data.') ? getCredentialFieldLabel(key.slice(5)) : key;
   }
+}
+
+function formatField(label: string, key: string, value: unknown, callout: boolean) {
+  return `${callout ? '> ' : ''}- ${label} [${key}]: ${JSON.stringify(value)}`;
 }
 
 export function formatCredentialItemAsMarkdown(
   item: CredentialItem,
   options: CredentialItemMarkdownFormatOptions,
 ) {
-  const { headingLevel = 3, format, exportBlankFields = true } = options;
+  const { headingLevel = 3, format, exportBlankFields = true, groupNames = [] } = options;
   const headingPrefix = '#'.repeat(headingLevel);
   const title = escapeMarkdownValue(item.title) || PWM_TEXT.UNTITLED_ITEM;
-  const username = wrapInlineCode(item.username);
-  const password = wrapInlineCode(item.password);
-  const urls = format === 'callout' ? formatCalloutUrls(item) : formatMarkdownUrls(item);
-  const notes = format === 'callout' ? formatCalloutIndentedValue(item.notes) : formatMarkdownIndentedValue(item.notes);
-  const expiration = wrapInlineCode(item.expiresAt ?? '');
+  const callout = format === 'callout';
+  const lines = [callout ? `> [!info] ${title}` : `${headingPrefix} ${title}`, ...(callout ? [] : [''])];
+  const fields: Array<{ key: string; value: unknown; required?: boolean }> = [
+    { key: 'type', value: item.type, required: true },
+    ...Object.entries(item.data).map(([key, value]) => ({ key: `data.${key}`, value })),
+    { key: 'urls', value: item.urls },
+    { key: 'notes', value: item.notes },
+    { key: 'expiresAt', value: item.expiresAt ?? '' },
+    { key: 'pinned', value: item.pinned, required: true },
+    { key: 'createdAt', value: item.createdAt, required: true },
+    { key: 'updatedAt', value: item.updatedAt, required: true },
+    { key: 'groupTags', value: groupNames },
+  ];
 
-  const hasUsername = !!username;
-  const hasPassword = !!password;
-  const hasUrls = !!urls;
-  const hasNotes = !!notes;
-  const hasExpiration = !!expiration;
-
-  if (format === 'callout') {
-    const lines = [`> [!info] ${title}`];
-
-    if (exportBlankFields || hasUsername) {
-      lines.push(`> - ${getMarkdownFieldLabel('username')}：${username}`);
+  fields.forEach(({ key, value, required }) => {
+    const hasValue = Array.isArray(value) ? value.length > 0 : value !== '' && value !== undefined;
+    if (required || exportBlankFields || hasValue) {
+      lines.push(formatField(getMarkdownFieldLabel(key), key, value, callout));
     }
-    if (exportBlankFields || hasPassword) {
-      lines.push(`> - ${getMarkdownFieldLabel('password')}：${password}`);
-    }
-    if (exportBlankFields || hasUrls) {
-      lines.push(`> - ${getMarkdownFieldLabel('url')}：${urls}`);
-    }
-    if (exportBlankFields || hasNotes) {
-      lines.push(`> - ${getMarkdownFieldLabel('notes')}：${notes}`);
-    }
-    if (exportBlankFields || hasExpiration) {
-      lines.push(`> - ${getMarkdownFieldLabel('expiration')}：${expiration}`);
-    }
-
-    return lines.join('\n');
-  }
-
-  const lines = [`${headingPrefix} ${title}`, ''];
-
-  if (exportBlankFields || hasUsername) {
-    lines.push(`- ${getMarkdownFieldLabel('username')}：${username}`);
-  }
-  if (exportBlankFields || hasPassword) {
-    lines.push(`- ${getMarkdownFieldLabel('password')}：${password}`);
-  }
-  if (exportBlankFields || hasUrls) {
-    lines.push(`- ${getMarkdownFieldLabel('url')}：${urls}`);
-  }
-  if (exportBlankFields || hasNotes) {
-    lines.push(`- ${getMarkdownFieldLabel('notes')}：${notes}`);
-  }
-  if (exportBlankFields || hasExpiration) {
-    lines.push(`- ${getMarkdownFieldLabel('expiration')}：${expiration}`);
-  }
+  });
 
   return lines.join('\n');
 }

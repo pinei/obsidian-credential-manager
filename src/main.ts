@@ -253,6 +253,10 @@ export default class CredentialManagerPlugin extends Plugin {
     return this.transferService.importGroupFromText(text);
   }
 
+  importGroupsFromText(text: string) {
+    return this.transferService.importGroupsFromText(text);
+  }
+
   importItemFromText(text: string, groupId: string) {
     return this.transferService.importItemFromText(text, groupId);
   }

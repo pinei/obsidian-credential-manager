@@ -110,14 +110,24 @@ export interface PwmTextFieldOptions {
   leadingIcon?: string;
 }
 
-export interface CredentialManagerExportPayload {
-  version: 1;
-  kind: 'library' | 'group' | 'groups' | 'item' | 'items';
+interface CredentialManagerExportPayloadBase {
+  version: 2;
   exportedAt: number;
-  data:
-    | CredentialManagerData
-    | { group: CredentialGroup; items: CredentialItem[] }
-    | { groups: Array<{ group: CredentialGroup; items: CredentialItem[] }> }
-    | CredentialItem
-    | CredentialItem[];
 }
+
+export interface CredentialManagerLibraryExportPayload extends CredentialManagerExportPayloadBase {
+  kind: 'library';
+  data: CredentialManagerData;
+}
+
+export interface CredentialManagerCollectionExportPayload extends CredentialManagerExportPayloadBase {
+  kind: 'groups' | 'items';
+  data: {
+    groups: CredentialGroup[];
+    items: CredentialItem[];
+  };
+}
+
+export type CredentialManagerExportPayload =
+  | CredentialManagerLibraryExportPayload
+  | CredentialManagerCollectionExportPayload;

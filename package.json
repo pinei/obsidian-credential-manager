@@ -8,6 +8,7 @@
 		"build:styles": "lessc styles.less styles.css",
 		"dev": "npm run build:styles && node esbuild.config.mjs",
 		"build": "npm run build:styles && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"test": "node tests/run-tests.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},

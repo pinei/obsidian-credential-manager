@@ -4,6 +4,7 @@ import { PWM_TEXT, formatPWMText } from '../lang';
 import { matchesAllKeywordsInValue, matchesAnyFieldKeywords, parseSearchKeywords } from '../util/search';
 import type { CredentialType, DeletedCredentialItem, CredentialGroup, CredentialItem, PwmFieldAction, PwmSortMode, PwmTextFieldOptions } from '../util/types';
 import { getCredentialExpirationState } from '../credentials/expiration';
+import { CREDENTIAL_TYPES, getCredentialFieldLabel, getCredentialTypeLabel } from '../credentials/schema';
 import { applyPwmModalClass, clearPwmModalShell } from './pwm-modal-shell';
 
 function setCssProps(element: HTMLElement, styles: Record<string, string>) {
@@ -71,19 +72,6 @@ type CredentialSummaryField =
   | 'cardholderName'
   | 'issuingBank'
   | 'fieldName';
-const CREDENTIAL_TYPES: Array<{ value: CredentialType; label: string }> = [
-  { value: 'login', label: 'Login' },
-  { value: 'app-registration', label: 'App registration' },
-  { value: 'api-token', label: 'API token' },
-  { value: 'database', label: 'Database' },
-  { value: 'certificate', label: 'Certificate' },
-  { value: 'ssh-key', label: 'SSH key' },
-  { value: 'cloud-credentials', label: 'Cloud credentials' },
-  { value: 'webhook', label: 'Webhook' },
-  { value: 'personal-id', label: 'Personal ID' },
-  { value: 'payment-card', label: 'Credit/debit card' },
-  { value: 'generic-secret', label: 'Generic secret' },
-];
 const CREDENTIAL_TYPE_ICONS: Record<CredentialType, string> = {
   login: 'log-in',
   'app-registration': 'app-window',
@@ -863,7 +851,10 @@ export class CredentialManagerModal extends Modal {
     const footer = container.createDiv({ cls: 'pwm-footer-actions' });
     this.plugin.createIconButton(footer, 'folder-down', PWM_TEXT.IMPORT_GROUP, async () => {
       await this.handleImport((text) => {
-        const group = this.plugin.importGroupFromText(text);
+        const group = this.plugin.importGroupsFromText(text)[0];
+        if (!group) {
+          return;
+        }
         this.selectedGroupId = group.id;
         this.selectedItemId = this.getPreferredSelectedItemId(group.id);
         this.resetGroupSelection(group.id);
@@ -1274,7 +1265,7 @@ export class CredentialManagerModal extends Modal {
 
   private renderCredentialDataFields(container: HTMLElement) {
     Object.entries(this.detailsDraft.data).forEach(([key, value]) => {
-      const label = this.getCredentialFieldLabel(key);
+      const label = getCredentialFieldLabel(key);
       const isSecret = this.isSensitiveCredentialField(key);
       const isSecretMultiline = this.detailsDraft.type === 'generic-secret' && key === 'value';
       const isBillingAddress = this.detailsDraft.type === 'payment-card' && key === 'billingAddress';
@@ -1321,45 +1312,6 @@ export class CredentialManagerModal extends Modal {
         this.updateDetailsDirtyState();
       });
     });
-  }
-
-  private getCredentialFieldLabel(key: string) {
-    const labels: Record<string, string> = {
-      username: PWM_TEXT.USERNAME,
-      clientId: PWM_TEXT.CLIENT_ID,
-      tenantId: PWM_TEXT.TENANT_ID,
-      tokenName: PWM_TEXT.TOKEN_NAME,
-      tokenValuePrimary: PWM_TEXT.TOKEN_VALUE_PRIMARY,
-      tokenValueSecondary: PWM_TEXT.TOKEN_VALUE_SECONDARY,
-      provider: PWM_TEXT.PROVIDER,
-      engine: PWM_TEXT.ENGINE,
-      databaseServiceName: PWM_TEXT.DATABASE_SERVICE_NAME,
-      schema: PWM_TEXT.SCHEMA,
-      host: PWM_TEXT.HOST,
-      certName: PWM_TEXT.CERT_NAME,
-      thumbprint: PWM_TEXT.THUMBPRINT,
-      keyName: PWM_TEXT.KEY_NAME,
-      accountName: PWM_TEXT.ACCOUNT_NAME,
-      name: PWM_TEXT.WEBHOOK_NAME,
-      method: PWM_TEXT.METHOD,
-      documentType: PWM_TEXT.DOCUMENT_TYPE,
-      idNumber: PWM_TEXT.ID_NUMBER,
-      fullName: PWM_TEXT.FULL_NAME,
-      dateOfBirth: PWM_TEXT.DATE_OF_BIRTH,
-      issueDate: PWM_TEXT.ISSUE_DATE,
-      issuingCountry: PWM_TEXT.ISSUING_COUNTRY,
-      issuingAuthority: PWM_TEXT.ISSUING_AUTHORITY,
-      cardBrand: PWM_TEXT.CARD_BRAND,
-      cardholderName: PWM_TEXT.CARDHOLDER_NAME,
-      cardNumber: PWM_TEXT.CARD_NUMBER,
-      issuingBank: PWM_TEXT.ISSUING_BANK,
-      cvv: PWM_TEXT.CVV,
-      pin: PWM_TEXT.PIN,
-      billingAddress: PWM_TEXT.BILLING_ADDRESS,
-      fieldName: PWM_TEXT.FIELD_NAME,
-      value: PWM_TEXT.VALUE,
-    };
-    return labels[key] ?? key.replace(/[A-Z]/g, (letter) => ` ${letter}`).replace(/^./, (letter) => letter.toUpperCase());
   }
 
   private isSensitiveCredentialField(key: string) {
@@ -1549,7 +1501,7 @@ export class CredentialManagerModal extends Modal {
 
   private renderItemMeta(container: HTMLElement, item: CredentialItem) {
     this.getCredentialSummaryEntries(item).forEach(({ key, value }) => {
-      container.createDiv({ text: `${this.getCredentialFieldLabel(key)}：${value}`, cls: 'pwm-item-subtitle' });
+      container.createDiv({ text: `${getCredentialFieldLabel(key)}：${value}`, cls: 'pwm-item-subtitle' });
     });
 
     const primaryUrl = (item.urls[0] || item.data.url || '').trim();
@@ -1588,7 +1540,7 @@ export class CredentialManagerModal extends Modal {
   }
 
   private getCredentialTypeLabel(type: CredentialType) {
-    return CREDENTIAL_TYPES.find((credentialType) => credentialType.value === type)?.label ?? type;
+    return getCredentialTypeLabel(type);
   }
 
   private createTextField(

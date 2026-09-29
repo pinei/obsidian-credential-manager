@@ -1,6 +1,7 @@
 import { Notice, normalizePath, TFile, type App } from 'obsidian';
 import {
   importGroupFromText,
+  importGroupsFromText,
   importItemFromText,
   importItemsFromText,
   importLibraryFromText,
@@ -39,7 +40,7 @@ export class CredentialTransferService {
     }
 
     downloadJson(filename, {
-      version: 1,
+      version: 2,
       kind: 'library',
       exportedAt,
       data: this.context.data,
@@ -140,11 +141,11 @@ export class CredentialTransferService {
       );
     } else {
       downloadJson(appendDateTimeSuffix(`${group.name || 'group'}.json`, exportedAt), {
-        version: 1,
-        kind: 'group',
+        version: 2,
+        kind: 'groups',
         exportedAt,
         data: {
-          group,
+          groups: [group],
           items,
         },
       });
@@ -154,19 +155,15 @@ export class CredentialTransferService {
   }
 
   exportGroups(groupIds: string[], format: 'json' | 'markdown' = 'json') {
-    const groupsWithItems = groupIds
-      .map((groupId) => {
-        const group = this.context.getGroup(groupId);
-        if (!group) {
-          return null;
-        }
-
-        return {
-          group,
-          items: this.context.getItemsByGroup(groupId),
-        };
-      })
-      .filter((entry): entry is { group: CredentialGroup; items: CredentialItem[] } => !!entry);
+    const groups = groupIds
+      .map((groupId) => this.context.getGroup(groupId))
+      .filter((group): group is CredentialGroup => !!group);
+    const selectedGroupIds = new Set(groups.map(({ id }) => id));
+    const items = this.context.data.items.filter((item) => item.groupIds.some((id) => selectedGroupIds.has(id)));
+    const groupsWithItems = groups.map((group) => ({
+      group,
+      items: items.filter((item) => item.groupIds.includes(group.id)),
+    }));
     if (!groupsWithItems.length) {
       return;
     }
@@ -181,11 +178,12 @@ export class CredentialTransferService {
       );
     } else {
       downloadJson(appendDateTimeSuffix('export-groups.json', exportedAt), {
-        version: 1,
+        version: 2,
         kind: 'groups',
         exportedAt,
         data: {
-          groups: groupsWithItems,
+          groups,
+          items,
         },
       });
     }
@@ -201,10 +199,13 @@ export class CredentialTransferService {
 
     const exportedAt = Date.now();
     downloadJson(appendDateTimeSuffix(`${item.title || 'item'}.json`, exportedAt), {
-      version: 1,
-      kind: 'item',
+      version: 2,
+      kind: 'items',
       exportedAt,
-      data: item,
+      data: {
+        groups: this.context.data.groups.filter((group) => item.groupIds.includes(group.id)),
+        items: [item],
+      },
     });
     new Notice(PWM_TEXT.EXPORT_SUCCESS);
   }
@@ -228,10 +229,13 @@ export class CredentialTransferService {
       );
     } else {
       downloadJson(appendDateTimeSuffix('export-items.json', exportedAt), {
-        version: 1,
+        version: 2,
         kind: 'items',
         exportedAt,
-        data: items,
+        data: {
+          groups: this.context.data.groups.filter((group) => items.some((item) => item.groupIds.includes(group.id))),
+          items,
+        },
       });
     }
     new Notice(PWM_TEXT.EXPORT_SUCCESS);
@@ -253,7 +257,7 @@ export class CredentialTransferService {
         throw new Error('Missing encryption password');
       }
 
-      const imported = await importLibraryFromText(text, password);
+      const imported = await importLibraryFromText(text, password, this.context.data);
       this.context.replaceData(imported);
     } catch {
       throw new Error(PWM_TEXT.IMPORT_FAILED);
@@ -263,6 +267,14 @@ export class CredentialTransferService {
   importGroupFromText(text: string) {
     try {
       return importGroupFromText(text, this.context.data);
+    } catch {
+      throw new Error(PWM_TEXT.IMPORT_FAILED);
+    }
+  }
+
+  importGroupsFromText(text: string) {
+    try {
+      return importGroupsFromText(text, this.context.data);
     } catch {
       throw new Error(PWM_TEXT.IMPORT_FAILED);
     }

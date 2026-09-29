@@ -20,6 +20,9 @@ It uses a JSON-based data structure and provides a three-column management inter
 - 💾 **Backup & restore** – Export all data as a one-click JSON snapshot and restore anytime.
 - 📝 **Auto-export to Markdown** – Automatically sync and export the complete credential vault to a specified Markdown file, convenient for read-only access, review, or integration into your note-taking workflow.
 - 📤 **Import / Export** – Supports Markdown / JSON formats for migration or collaboration with other tools.
+
+> [!WARNING]
+> Markdown exports are not encrypted. They contain every exported credential field in plaintext, including passwords, tokens, private keys, personal IDs, and payment-card details. Store and sync these files accordingly; use encrypted library export when plaintext is not acceptable.
 - 🗑️ **Recycle bin** – Deleted entries are temporarily stored in the recycle bin and can be restored or permanently removed.
 
 ## 🚀 Installation

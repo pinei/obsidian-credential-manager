@@ -213,7 +213,6 @@ export const PWM_TEXT = {
   RESTORE_ITEM: '恢复选中条目',
   EXPORT_FORMAT_JSON: 'JSON 格式',
   EXPORT_FORMAT_MARKDOWN: 'Markdown 格式',
-  EXPORT_FORMAT_CSV: 'CSV 格式',
   IMPORT_SUCCESS: '导入完成',
   EXPORT_SUCCESS: '导出完成',
   IMPORT_FAILED: '导入失败，文件格式无效',

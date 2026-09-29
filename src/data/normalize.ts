@@ -27,6 +27,36 @@ const DEFAULT_COLUMN_RATIO_EXPR = '1,1,2';
 const DEFAULT_GROUP_COLUMN_WIDTH = 220;
 const DEFAULT_ITEM_COLUMN_WIDTH = 320;
 
+type CredentialItemInput = Partial<CredentialItem> & { groupId?: string; url?: unknown };
+
+export function normalizeCredentialItem(
+  item: CredentialItemInput,
+  fallbackGroupId: string,
+  index = 0,
+  availableGroupIds?: Iterable<string>,
+): CredentialItem {
+  const now = Date.now();
+  const createdAt = typeof item.createdAt === 'number' ? item.createdAt : now + index;
+  const type = normalizeCredentialType(item.type);
+  const data = normalizeCredentialData(item.type, item.data, item.username, item.password);
+  return {
+    id: item.id || createId(),
+    groupIds: normalizeGroupIds(item.groupIds ?? item.groupId, fallbackGroupId, availableGroupIds),
+    title: item.title || PWM_TEXT.GENERATED_NEW_ITEM_TITLE,
+    type,
+    data,
+    username: type === 'login' ? data.username ?? '' : item.username || '',
+    password: type === 'login' ? data.password ?? '' : item.password || '',
+    urls: normalizeUrls(item.urls ?? item.url),
+    notes: item.notes || '',
+    expiresAt: normalizeExpirationDate(item.expiresAt),
+    pinned: typeof item.pinned === 'boolean' ? item.pinned : false,
+    createdAt,
+    updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : createdAt,
+    order: typeof item.order === 'number' ? item.order : index,
+  };
+}
+
 export function normalizeCredentialManagerData(saved: unknown): CredentialManagerData {
   const source = saved as Partial<CredentialManagerData> | undefined;
   const now = Date.now();
@@ -48,24 +78,12 @@ export function normalizeCredentialManagerData(saved: unknown): CredentialManage
     ? source?.items ?? []
     : structuredClone(DEFAULT_DATA.items);
   const items = rawItems.map(
-    (item: Partial<CredentialItem> & { groupId?: string; url?: unknown }, index: number): CredentialItem => ({
-      id: item.id || createId(),
-      groupIds: normalizeGroupIds(item.groupIds ?? item.groupId, fallbackGroupId, availableGroupIds),
-      title: item.title || PWM_TEXT.GENERATED_NEW_ITEM_TITLE,
-      type: normalizeCredentialType(item.type),
-      data: normalizeCredentialData(item.type, item.data, item.username, item.password),
-      username: item.username || '',
-      password: item.password || '',
-      urls: normalizeUrls(item.urls ?? item.url),
-      notes: item.notes || '',
-      expiresAt: normalizeExpirationDate(item.expiresAt),
-      pinned: typeof item.pinned === 'boolean' ? item.pinned : false,
-      createdAt: typeof item.createdAt === 'number' ? item.createdAt : now + index,
-      updatedAt: typeof item.updatedAt === 'number'
-        ? item.updatedAt
-        : (typeof item.createdAt === 'number' ? item.createdAt : now + index),
-      order: typeof item.order === 'number' ? item.order : index,
-    }),
+    (item: CredentialItemInput, index: number) => normalizeCredentialItem(
+      item,
+      fallbackGroupId,
+      index,
+      availableGroupIds,
+    ),
   );
   const rawTrash = Array.isArray(source?.trash)
     ? source?.trash ?? []

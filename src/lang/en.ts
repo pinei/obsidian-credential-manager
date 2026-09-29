@@ -213,7 +213,6 @@ export const PWM_TEXT = {
   RESTORE_ITEM: 'Restore selected items',
   EXPORT_FORMAT_JSON: 'JSON format',
   EXPORT_FORMAT_MARKDOWN: 'Markdown format',
-  EXPORT_FORMAT_CSV: 'CSV format',
   IMPORT_SUCCESS: 'Import completed',
   EXPORT_SUCCESS: 'Export completed',
   IMPORT_FAILED: 'Import failed: invalid file format',

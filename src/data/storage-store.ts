@@ -6,6 +6,7 @@ import { normalizeCredentialManagerData } from './normalize';
 import type {
   DeletedCredentialItem,
   EncryptedPasswordLibraryPayload,
+  CredentialManagerLibraryExportPayload,
   CredentialItem,
   CredentialManagerData,
 } from '../util/types';
@@ -182,7 +183,7 @@ export class CredentialStorageStore {
     }
 
     const payload = {
-      version: 1 as const,
+      version: 2 as const,
       kind: 'library' as const,
       exportedAt,
       data,
@@ -193,7 +194,7 @@ export class CredentialStorageStore {
   private async writeRawBackupFile(
     backupDirPath: string,
     filePrefix: string,
-    payload: EncryptedPasswordLibraryPayload | { version: 1; kind: 'library'; exportedAt: number; data: CredentialManagerData },
+    payload: EncryptedPasswordLibraryPayload | CredentialManagerLibraryExportPayload,
     exportedAt = Date.now(),
   ) {
     const adapter = this.app.vault.adapter;

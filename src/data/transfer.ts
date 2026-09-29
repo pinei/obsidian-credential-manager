@@ -1,387 +1,246 @@
+import { isCredentialType } from '../credentials/schema';
 import { PWM_TEXT } from '../lang';
 import { escapeMarkdownValue, formatCredentialItemAsMarkdown } from '../util/markdown-item-format';
-import type { PasswordCopyFormat, CredentialGroup, CredentialItem, CredentialManagerData, CredentialManagerExportPayload } from '../util/types';
+import type {
+  CredentialGroup,
+  CredentialItem,
+  CredentialManagerData,
+  CredentialManagerExportPayload,
+  PasswordCopyFormat,
+} from '../util/types';
 
-function isBlankExportItem(item: CredentialItem) {
-  return !!item.title.trim()
-    && !item.username.trim()
-    && !item.password.trim()
-    && item.urls.every((url) => !url.trim())
-    && !item.notes.trim()
-    && !item.expiresAt;
-}
+export type ParsedMarkdownItem = Partial<CredentialItem> & { groupNames?: string[] };
 
-interface ParsedMarkdownGroup {
+export interface ParsedMarkdownGroup {
   groupName: string;
-  items: Partial<CredentialItem>[];
+  items: ParsedMarkdownItem[];
 }
 
-const MARKDOWN_FIELD_LABELS = {
-  username: [PWM_TEXT.COPY_FIELD_USERNAME, 'Username'],
-  password: [PWM_TEXT.COPY_FIELD_PASSWORD, 'Password'],
-  url: [PWM_TEXT.COPY_FIELD_URL, 'URL', 'Link'],
-  notes: [PWM_TEXT.COPY_FIELD_NOTES, 'Notes'],
-  expiration: [PWM_TEXT.EXPIRATION_DATE, 'Expiration date', 'Expires'],
-  groupTags: [PWM_TEXT.COPY_FIELD_GROUP_TAGS, 'Group Tags'],
-} as const;
-
-const CSV_HEADER_ALIASES = {
-  group: ['group', '组', 'groupName'],
-  title: ['title', '标题'],
-  username: ['username', '账号'],
-  password: ['password', '密码'],
-  url: ['url', 'link', '链接'],
-  notes: ['notes', 'remark', '备注'],
-  expiration: ['expiration', 'expirationDate', 'expiresAt', '过期日期'],
-  pinned: ['pinned', '置顶'],
-  createdAt: ['createdAt', '创建时间'],
-} as const;
-
-function normalizeLookupKey(value: string) {
-  return value.trim().toLowerCase();
+export function getMarkdownDocumentKind(text: string): 'library' | 'groups' | 'items' | null {
+  const match = text.match(/<!--\s*credential-manager:v2\s+kind=(library|groups|items)\s*-->/);
+  return match?.[1] as 'library' | 'groups' | 'items' | undefined ?? null;
 }
 
-function matchLookupKey(value: string, aliases: readonly string[]) {
-  const normalized = normalizeLookupKey(value);
-  return aliases.some((alias) => normalizeLookupKey(alias) === normalized);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function parseMarkdownFieldLabel(label: string) {
-  if (matchLookupKey(label, MARKDOWN_FIELD_LABELS.username)) {
-    return 'username';
-  }
-  if (matchLookupKey(label, MARKDOWN_FIELD_LABELS.password)) {
-    return 'password';
-  }
-  if (matchLookupKey(label, MARKDOWN_FIELD_LABELS.url)) {
-    return 'url';
-  }
-  if (matchLookupKey(label, MARKDOWN_FIELD_LABELS.notes)) {
-    return 'notes';
-  }
-  if (matchLookupKey(label, MARKDOWN_FIELD_LABELS.expiration)) {
-    return 'expiration';
-  }
-  if (matchLookupKey(label, MARKDOWN_FIELD_LABELS.groupTags)) {
-    return 'groupTags';
-  }
-  return null;
+function isCredentialGroup(value: unknown): value is CredentialGroup {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && typeof value.createdAt === 'number'
+    && typeof value.order === 'number';
 }
 
-function getCsvHeaderIndex(headerMap: Map<string, number>, aliases: readonly string[]) {
-  for (const alias of aliases) {
-    const index = headerMap.get(normalizeLookupKey(alias));
-    if (index !== undefined) {
-      return index;
-    }
-  }
-  return undefined;
+function isCredentialItem(value: unknown): value is CredentialItem {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && Array.isArray(value.groupIds)
+    && value.groupIds.every((id) => typeof id === 'string')
+    && typeof value.title === 'string'
+    && isCredentialType(value.type)
+    && isRecord(value.data)
+    && Object.values(value.data).every((entry) => typeof entry === 'string')
+    && typeof value.username === 'string'
+    && typeof value.password === 'string'
+    && Array.isArray(value.urls)
+    && value.urls.every((url) => typeof url === 'string')
+    && typeof value.notes === 'string'
+    && (value.expiresAt === undefined || typeof value.expiresAt === 'string')
+    && typeof value.pinned === 'boolean'
+    && typeof value.createdAt === 'number'
+    && typeof value.updatedAt === 'number'
+    && typeof value.order === 'number';
 }
 
-function unwrapMarkdownValue(value: string) {
-  return value.trim().replace(/^`([^`]*)`$/, '$1').replace(/^<([^>]+)>$/, '$1').trim();
+function isCredentialManagerData(value: unknown): value is CredentialManagerData {
+  return isRecord(value)
+    && Array.isArray(value.groups)
+    && value.groups.every(isCredentialGroup)
+    && Array.isArray(value.items)
+    && value.items.every(isCredentialItem)
+    && Array.isArray(value.trash)
+    && isRecord(value.view)
+    && isRecord(value.settings);
 }
 
-function escapeCsvValue(value: string) {
-  const normalized = value.replace(/\r\n/g, '\n');
-  if (!/[",\n]/.test(normalized)) {
-    return normalized;
-  }
-  return `"${normalized.replace(/"/g, '""')}"`;
-}
-
-function parseCsvRows(text: string) {
-  const normalized = text.replace(/\r\n/g, '\n');
-  const rows: string[][] = [];
-  let currentRow: string[] = [];
-  let currentValue = '';
-  let inQuotes = false;
-
-  for (let index = 0; index < normalized.length; index += 1) {
-    const char = normalized[index];
-
-    if (char === '"') {
-      if (inQuotes && normalized[index + 1] === '"') {
-        currentValue += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === ',' && !inQuotes) {
-      currentRow.push(currentValue);
-      currentValue = '';
-      continue;
-    }
-
-    if (char === '\n' && !inQuotes) {
-      currentRow.push(currentValue);
-      rows.push(currentRow);
-      currentRow = [];
-      currentValue = '';
-      continue;
-    }
-
-    currentValue += char;
+export function parseImportPayload(text: string): CredentialManagerExportPayload {
+  const payload = JSON.parse(text) as unknown;
+  if (!isRecord(payload) || payload.version !== 2 || typeof payload.exportedAt !== 'number') {
+    throw new Error('Invalid import payload');
   }
 
-  currentRow.push(currentValue);
-  rows.push(currentRow);
+  if (payload.kind === 'library' && isCredentialManagerData(payload.data)) {
+    return payload as unknown as CredentialManagerExportPayload;
+  }
 
-  return rows.filter((row) => row.some((value) => value.length > 0));
+  if ((payload.kind === 'groups' || payload.kind === 'items')
+    && isRecord(payload.data)
+    && Array.isArray(payload.data.groups)
+    && payload.data.groups.every(isCredentialGroup)
+    && Array.isArray(payload.data.items)
+    && payload.data.items.every(isCredentialItem)) {
+    return payload as unknown as CredentialManagerExportPayload;
+  }
+
+  throw new Error('Invalid import payload');
 }
 
-function createEmptyImportedItem(title = ''): Partial<CredentialItem> {
+function createEmptyImportedItem(title: string): ParsedMarkdownItem {
   return {
     title,
-    username: '',
-    password: '',
+    data: {},
     urls: [],
     notes: '',
-    expiresAt: undefined,
     pinned: false,
   };
 }
 
-function getJoinedUrls(item: Pick<CredentialItem, 'urls'> & { url?: string }) {
-  return (item.urls.length ? item.urls : (item.url ? [item.url] : [])).join('\n');
-}
-
-function buildMarkdownItemLines(
-  item: CredentialItem,
-  headingLevel: 2 | 3,
-  format: PasswordCopyFormat,
-  exportBlankFields = true,
-) {
-  return formatCredentialItemAsMarkdown(item, {
-    headingLevel,
-    format,
-    exportBlankFields,
-  });
-}
-
-function formatGroupedMarkdown(
-  groupName: string,
-  items: CredentialItem[],
-  format: PasswordCopyFormat,
-  exportBlankFields = true,
-) {
-  const itemBlocks = items.map((item) => buildMarkdownItemLines(item, 3, format, exportBlankFields));
-  return [
-    `## ${escapeMarkdownValue(groupName) || PWM_TEXT.UNTITLED_GROUP}`,
-    ...itemBlocks,
-  ].join('\n\n');
-}
-
-function parseMarkdownUrlList(lines: string[], startIndex: number) {
-  const urls: string[] = [];
-  let nextIndex = startIndex;
-
-  while (nextIndex < lines.length) {
-    const line = lines[nextIndex] ?? '';
-    const match = line.match(/^\s*-\s+(.*)$/);
-    if (!match) {
-      break;
-    }
-    const value = unwrapMarkdownValue(match[1] ?? '');
-    if (value) {
-      urls.push(value);
-    }
-    nextIndex += 1;
+function parseMarkdownValue(rawValue: string): unknown {
+  try {
+    return JSON.parse(rawValue);
+  } catch {
+    throw new Error('Invalid markdown payload');
   }
-
-  return { urls, nextIndex };
 }
 
-function parseMarkdownIndentedValue(lines: string[], startIndex: number) {
-  const values: string[] = [];
-  let nextIndex = startIndex;
-
-  while (nextIndex < lines.length) {
-    const line = lines[nextIndex] ?? '';
-    if (!line.startsWith('    ')) {
-      break;
-    }
-    values.push(line.slice(4));
-    nextIndex += 1;
+function applyMarkdownField(item: ParsedMarkdownItem, key: string, value: unknown) {
+  if (key === 'type' && isCredentialType(value)) {
+    item.type = value;
+  } else if (key.startsWith('data.') && key.length > 5 && typeof value === 'string') {
+    item.data = { ...item.data, [key.slice(5)]: value };
+  } else if (key === 'urls' && Array.isArray(value) && value.every((entry) => typeof entry === 'string')) {
+    item.urls = value;
+  } else if (key === 'notes' && typeof value === 'string') {
+    item.notes = value;
+  } else if (key === 'expiresAt' && typeof value === 'string') {
+    item.expiresAt = value || undefined;
+  } else if (key === 'pinned' && typeof value === 'boolean') {
+    item.pinned = value;
+  } else if (key === 'createdAt' && typeof value === 'number') {
+    item.createdAt = value;
+  } else if (key === 'updatedAt' && typeof value === 'number') {
+    item.updatedAt = value;
+  } else if (key === 'groupTags' && Array.isArray(value) && value.every((entry) => typeof entry === 'string')) {
+    item.groupNames = value;
   }
-
-  return {
-    value: values.join('\n').trim(),
-    nextIndex,
-  };
 }
 
 function parseGroupedMarkdownGroups(text: string): ParsedMarkdownGroup[] {
-  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const lines = text.replace(/\r\n/g, '\n').split('\n').map((line) => line.replace(/^> ?/, ''));
   const groups: ParsedMarkdownGroup[] = [];
-  let currentGroup: ParsedMarkdownGroup | null = null;
-  let currentItem: Partial<CredentialItem> | null = null;
+  let currentGroup: ParsedMarkdownGroup | undefined;
+  let currentItem: ParsedMarkdownItem | undefined;
 
   const ensureGroup = () => {
-    if (currentGroup) {
-      return currentGroup;
+    if (!currentGroup) {
+      currentGroup = { groupName: '', items: [] };
+      groups.push(currentGroup);
     }
-    currentGroup = { groupName: '', items: [] };
-    groups.push(currentGroup);
     return currentGroup;
   };
 
-  const startItem = (title: string) => {
-    currentItem = createEmptyImportedItem(title);
-    ensureGroup().items.push(currentItem);
-  };
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-
+  lines.forEach((line) => {
     if (line.startsWith('## ')) {
       currentGroup = { groupName: line.slice(3).trim(), items: [] };
       groups.push(currentGroup);
-      currentItem = null;
-      continue;
+      currentItem = undefined;
+      return;
     }
 
-    if (line.startsWith('### ')) {
-      startItem(line.slice(4).trim());
-      continue;
+    if (line.startsWith('### ') || line.startsWith('[!info] ')) {
+      const title = line.startsWith('### ') ? line.slice(4).trim() : line.slice(8).trim();
+      currentItem = createEmptyImportedItem(title);
+      ensureGroup().items.push(currentItem);
+      return;
     }
 
     if (!currentItem) {
-      continue;
-    }
-    const itemRef: Partial<CredentialItem> = currentItem;
-
-    const match = line.match(/^-\s*([^：:]+)[：:](.*)$/);
-    if (!match) {
-      continue;
+      return;
     }
 
-    const rawLabel = match[1] ?? '';
-    const rawValue = match[2] ?? '';
-    const field = parseMarkdownFieldLabel(rawLabel);
-    if (!field) {
-      continue;
+    const fieldMatch = line.match(/^-\s+.*\[([^\]]+)\]:\s*(.*)$/);
+    if (fieldMatch) {
+      applyMarkdownField(currentItem, fieldMatch[1] ?? '', parseMarkdownValue(fieldMatch[2] ?? ''));
     }
+  });
 
-    const value = unwrapMarkdownValue(rawValue);
-    switch (field) {
-      case 'username':
-        itemRef.username = value;
-        break;
-      case 'password':
-        itemRef.password = value;
-        break;
-      case 'url': {
-        if (value) {
-          itemRef.urls = [value];
-          break;
-        }
-        const { urls, nextIndex } = parseMarkdownUrlList(lines, index + 1);
-        itemRef.urls = urls;
-        index = nextIndex - 1;
-        break;
-      }
-      case 'notes': {
-        if (value) {
-          itemRef.notes = value;
-          break;
-        }
-        const { value: noteValue, nextIndex } = parseMarkdownIndentedValue(lines, index + 1);
-        itemRef.notes = noteValue;
-        index = nextIndex - 1;
-        break;
-      }
-      case 'expiration':
-        itemRef.expiresAt = value || undefined;
-        break;
-      default:
-        break;
-    }
-  }
-
-  return groups.filter((group) => group.items.length > 0 || group.groupName);
+  return groups.filter((group) => group.groupName || group.items.length);
 }
 
-function parseFlatMarkdownItems(text: string) {
-  const normalized = text.replace(/\r\n/g, '\n').trim();
-  if (!normalized) {
+export function parseMarkdownGroups(text: string): ParsedMarkdownGroup[] {
+  const groups = parseGroupedMarkdownGroups(text);
+  if (!groups.length || groups.some((group) => group.items.some((item) => !isCredentialType(item.type)))) {
     throw new Error('Invalid markdown payload');
   }
-
-  const sections = normalized
-    .split(/\n(?:---|___|\*\*\*)\n/g)
-    .map((section) => section.trim())
-    .filter(Boolean);
-
-  return sections.map((section) => {
-    const lines = section.split('\n');
-    const heading = lines.find((line) => line.startsWith('## ') || line.startsWith('### '));
-    const title = !heading
-      ? ''
-      : heading.startsWith('### ')
-        ? heading.slice(4).trim()
-        : heading.slice(3).trim();
-    const item = createEmptyImportedItem(title);
-
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index] ?? '';
-      const match = line.match(/^-\s*([^：:]+)[：:](.*)$/);
-      if (!match) {
-        continue;
-      }
-
-      const rawLabel = match[1] ?? '';
-      const rawValue = match[2] ?? '';
-      const field = parseMarkdownFieldLabel(rawLabel);
-      if (!field) {
-        continue;
-      }
-
-      const value = unwrapMarkdownValue(rawValue);
-      switch (field) {
-        case 'username':
-          item.username = value;
-          break;
-        case 'password':
-          item.password = value;
-          break;
-        case 'url': {
-          if (value) {
-            item.urls = [value];
-            break;
-          }
-          const { urls, nextIndex } = parseMarkdownUrlList(lines, index + 1);
-          item.urls = urls;
-          index = nextIndex - 1;
-          break;
-        }
-        case 'notes': {
-          if (value) {
-            item.notes = value;
-            break;
-          }
-          const { value: noteValue, nextIndex } = parseMarkdownIndentedValue(lines, index + 1);
-          item.notes = noteValue;
-          index = nextIndex - 1;
-          break;
-        }
-        case 'expiration':
-          item.expiresAt = value || undefined;
-          break;
-        default:
-          break;
-      }
-    }
-
-    return item;
-  });
+  return groups.map((group) => ({
+    groupName: group.groupName || PWM_TEXT.IMPORT_GROUP_FALLBACK_NAME,
+    items: group.items,
+  }));
 }
 
-export function parseImportPayload(text: string): CredentialManagerExportPayload {
-  return JSON.parse(text) as CredentialManagerExportPayload;
+export function parseMarkdownItems(text: string, _data: CredentialManagerData, _defaultGroupId: string) {
+  const items = parseGroupedMarkdownGroups(text).flatMap((group) => group.items);
+  if (!items.length || items.some((item) => !isCredentialType(item.type))) {
+    throw new Error('Invalid markdown payload');
+  }
+  return items;
+}
+
+function formatGroupedMarkdown(
+  group: CredentialGroup,
+  items: CredentialItem[],
+  groups: CredentialGroup[],
+  format: PasswordCopyFormat,
+  exportBlankFields: boolean,
+) {
+  const blocks = [`## ${escapeMarkdownValue(group.name) || PWM_TEXT.UNTITLED_GROUP}`];
+  items.forEach((item) => {
+    blocks.push(formatCredentialItemAsMarkdown(item, {
+      headingLevel: 3,
+      format,
+      exportBlankFields,
+      groupNames: groups.filter(({ id }) => item.groupIds.includes(id)).map(({ name }) => name),
+    }));
+  });
+  return blocks.join('\n\n');
+}
+
+export function formatMarkdownDocument(
+  kind: 'library' | 'groups' | 'items',
+  groups: CredentialGroup[],
+  items: CredentialItem[],
+  format: PasswordCopyFormat,
+  exportBlankFields: boolean,
+) {
+  const remainingItems = new Map(items.map((item) => [item.id, item]));
+  const blocks = [`<!-- credential-manager:v2 kind=${kind} -->`];
+
+  groups.forEach((group) => {
+    const groupItems = items.filter((item) => remainingItems.has(item.id) && item.groupIds.includes(group.id));
+    blocks.push(formatGroupedMarkdown(group, groupItems, groups, format, exportBlankFields));
+    groupItems.forEach(({ id }) => remainingItems.delete(id));
+  });
+
+  remainingItems.forEach((item) => {
+    blocks.push(formatCredentialItemAsMarkdown(item, {
+      headingLevel: 3,
+      format,
+      exportBlankFields,
+      groupNames: groups.filter(({ id }) => item.groupIds.includes(id)).map(({ name }) => name),
+    }));
+  });
+
+  return blocks.join('\n\n');
+}
+
+function isBlankExportItem(item: CredentialItem) {
+  return !!item.title.trim()
+    && Object.values(item.data).every((value) => !value.trim())
+    && item.urls.every((url) => !url.trim())
+    && !item.notes.trim()
+    && !item.expiresAt;
 }
 
 export function downloadText(filename: string, content: string, mimeType: string) {
@@ -405,17 +264,7 @@ export function downloadMarkdownItems(
   format: PasswordCopyFormat,
   exportBlankFields = true,
 ) {
-  const groupedContent = groups
-    .filter((group) => items.some((item) => item.groupIds.includes(group.id)))
-    .map((group) => formatGroupedMarkdown(
-      group.name,
-      items.filter((item) => item.groupIds.includes(group.id)),
-      format,
-      exportBlankFields,
-    ))
-    .join('\n\n');
-
-  downloadText(filename, groupedContent, 'text/markdown;charset=utf-8');
+  downloadText(filename, formatMarkdownDocument('items', groups, items, format, exportBlankFields), 'text/markdown;charset=utf-8');
 }
 
 export function downloadMarkdownGroups(
@@ -424,12 +273,9 @@ export function downloadMarkdownGroups(
   format: PasswordCopyFormat,
   exportBlankFields = true,
 ) {
-  const content = groupsWithItems
-    .filter(({ items }) => items.length > 0)
-    .map(({ group, items }) => formatGroupedMarkdown(group.name, items, format, exportBlankFields))
-    .join('\n\n');
-
-  downloadText(filename, content, 'text/markdown;charset=utf-8');
+  const groups = groupsWithItems.map(({ group }) => group);
+  const items = [...new Map(groupsWithItems.flatMap(({ items: groupItems }) => groupItems).map((item) => [item.id, item])).values()];
+  downloadText(filename, formatMarkdownDocument('groups', groups, items, format, exportBlankFields), 'text/markdown;charset=utf-8');
 }
 
 export function downloadMarkdownGroup(
@@ -439,7 +285,7 @@ export function downloadMarkdownGroup(
   format: PasswordCopyFormat,
   exportBlankFields = true,
 ) {
-  downloadText(filename, formatGroupedMarkdown(group.name, items, format, exportBlankFields), 'text/markdown;charset=utf-8');
+  downloadText(filename, formatMarkdownDocument('groups', [group], items, format, exportBlankFields), 'text/markdown;charset=utf-8');
 }
 
 export function exportLibraryToMarkdown(
@@ -450,121 +296,7 @@ export function exportLibraryToMarkdown(
   exportBlankItems: boolean,
   exportBlankFields: boolean,
 ) {
-  return groups
-    .map((group) => ({
-      group,
-      groupItems: items
-        .filter((item) => item.groupIds.includes(group.id))
-        .filter((item) => exportBlankItems || !isBlankExportItem(item)),
-    }))
-    .filter(({ groupItems }) => exportEmptyGroups || groupItems.length > 0)
-    .map(({ group, groupItems }) => formatGroupedMarkdown(group.name, groupItems, format, exportBlankFields))
-    .filter(Boolean)
-    .join('\n\n');
-}
-
-export function downloadCsvGroups(filename: string, groupsWithItems: Array<{ group: CredentialGroup; items: CredentialItem[] }>) {
-  const header = ['group', 'title', 'username', 'password', 'url', 'notes', 'expiresAt', 'pinned', 'createdAt'];
-  const rows = groupsWithItems.flatMap(({ group, items }) => items.map((item) => [
-    group.name,
-    item.title,
-    item.username,
-    item.password,
-    getJoinedUrls(item),
-    item.notes,
-    item.expiresAt ?? '',
-    String(item.pinned),
-    String(item.createdAt),
-  ].map(escapeCsvValue).join(',')));
-
-  downloadText(filename, [header.join(','), ...rows].join('\n'), 'text/csv;charset=utf-8');
-}
-
-export function downloadCsvGroup(filename: string, group: CredentialGroup, items: CredentialItem[]) {
-  const header = ['group', 'title', 'username', 'password', 'url', 'notes', 'expiresAt', 'pinned', 'createdAt'];
-  const rows = items.map((item) => [
-    group.name,
-    item.title,
-    item.username,
-    item.password,
-    getJoinedUrls(item),
-    item.notes,
-    item.expiresAt ?? '',
-    String(item.pinned),
-    String(item.createdAt),
-  ].map(escapeCsvValue).join(','));
-
-  downloadText(filename, [header.join(','), ...rows].join('\n'), 'text/csv;charset=utf-8');
-}
-
-export function parseMarkdownGroup(text: string) {
-  const groups = parseGroupedMarkdownGroups(text).filter((group) => group.items.length > 0);
-  const firstGroup = groups[0];
-  if (!firstGroup) {
-    throw new Error('Invalid markdown payload');
-  }
-
-  return {
-    groupName: firstGroup.groupName || PWM_TEXT.IMPORT_GROUP_FALLBACK_NAME,
-    items: firstGroup.items,
-  };
-}
-
-export function parseCsvGroup(text: string) {
-  const rows = parseCsvRows(text);
-  if (rows.length < 2) {
-    throw new Error('Invalid csv payload');
-  }
-
-  const headers = rows[0];
-  if (!headers) {
-    throw new Error('Invalid csv payload');
-  }
-  const headerMap = new Map(headers.map((header, index) => [normalizeLookupKey(header), index]));
-  const groupIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.group);
-  const titleIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.title);
-  const usernameIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.username);
-  const passwordIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.password);
-  const urlIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.url);
-  const notesIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.notes);
-  const expirationIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.expiration);
-  const pinnedIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.pinned);
-  const createdAtIndex = getCsvHeaderIndex(headerMap, CSV_HEADER_ALIASES.createdAt);
-
-  if (groupIndex === undefined || titleIndex === undefined) {
-    throw new Error('Invalid csv payload');
-  }
-
-  const dataRows = rows.slice(1);
-  return {
-    groupName: dataRows[0]?.[groupIndex]?.trim() || PWM_TEXT.IMPORT_GROUP_FALLBACK_NAME,
-    items: dataRows.map((row) => ({
-      title: row[titleIndex]?.trim() || '',
-      username: row[usernameIndex ?? -1]?.trim() || '',
-      password: row[passwordIndex ?? -1]?.trim() || '',
-      urls: (row[urlIndex ?? -1]?.split(/\r?\n/) ?? []).map((value) => value.trim()).filter(Boolean),
-      notes: row[notesIndex ?? -1]?.trim() || '',
-      expiresAt: row[expirationIndex ?? -1]?.trim() || undefined,
-      pinned: row[pinnedIndex ?? -1]?.trim() === 'true',
-      createdAt: Number(row[createdAtIndex ?? -1]) || undefined,
-    })),
-  };
-}
-
-export function parseMarkdownItems(text: string, _data: CredentialManagerData, _defaultGroupId: string) {
-  const groupedItems = parseGroupedMarkdownGroups(text)
-    .flatMap((group) => group.items)
-    .filter((item) => item.title || item.username || item.password || item.urls?.length || item.notes || item.expiresAt);
-
-  if (groupedItems.length) {
-    return groupedItems.map((item) => ({
-      ...createEmptyImportedItem(item.title || ''),
-      ...item,
-    }));
-  }
-
-  return parseFlatMarkdownItems(text).map((item) => ({
-    ...createEmptyImportedItem(item.title || ''),
-    ...item,
-  }));
+  const exportedItems = items.filter((item) => exportBlankItems || !isBlankExportItem(item));
+  const exportedGroups = groups.filter((group) => exportEmptyGroups || exportedItems.some((item) => item.groupIds.includes(group.id)));
+  return formatMarkdownDocument('library', exportedGroups, exportedItems, format, exportBlankFields);
 }
