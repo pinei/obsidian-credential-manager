@@ -187,6 +187,27 @@
 .pwm-icon-button.pwm-button-warning:hover {
   background: color-mix(in srgb, var(--text-warning) 16%, transparent);
 }
+.pwm-encryption-warning {
+  border: 1px solid color-mix(in srgb, var(--text-warning) 35%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-warning) 8%, transparent);
+  padding: 10px 12px;
+}
+.pwm-encryption-warning .setting-item-name,
+.pwm-encryption-warning .setting-item-description,
+.pwm-encryption-warning .pwm-encryption-warning-icon {
+  color: var(--text-warning);
+}
+.pwm-encryption-warning .pwm-encryption-warning-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pwm-encryption-warning .pwm-encryption-warning-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
 .pwm-icon-button.pwm-button-success {
   color: var(--text-success, var(--color-green, var(--text-accent)));
 }

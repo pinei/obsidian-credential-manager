@@ -1,5 +1,5 @@
 import type { EncryptedPasswordVerifier } from './util/types';
-import { PluginSettingTab, Setting, type App } from 'obsidian';
+import { PluginSettingTab, setIcon, Setting, type App } from 'obsidian';
 import { PWM_TEXT } from './lang';
 import type CredentialManagerPlugin from './main';
 import type { PasswordCopyFormat, PasswordUnlockMode } from './util/types';
@@ -362,6 +362,21 @@ export class CredentialManagerSettingTab extends PluginSettingTab {
           }),
       );
 
+    if (!this.plugin.pluginConfig.encryptionEnabled) {
+      const warningDescription = document.createDocumentFragment();
+      const warningContent = document.createElement('div');
+      warningContent.addClass('pwm-encryption-warning-content');
+      const warningIcon = warningContent.createSpan({ cls: 'pwm-encryption-warning-icon' });
+      setIcon(warningIcon, 'triangle-alert');
+      warningContent.createSpan({ text: PWM_TEXT.ENCRYPTION_DISABLED_WARNING_DESC });
+      warningDescription.append(warningContent);
+
+      const warningSetting = new Setting(containerEl)
+        .setName(PWM_TEXT.ENCRYPTION_DISABLED_WARNING_TITLE)
+        .setDesc(warningDescription);
+      warningSetting.settingEl.addClass('pwm-encryption-warning');
+    }
+
     if (this.plugin.pluginConfig.encryptionEnabled) {
       new Setting(containerEl)
         .setName(PWM_TEXT.ENCRYPTION_UNLOCK_MODE_SETTING)
@@ -390,6 +405,21 @@ export class CredentialManagerSettingTab extends PluginSettingTab {
               this.display();
             }),
         );
+
+      if (this.plugin.pluginConfig.persistEncryptionPassword) {
+        const warningDescription = document.createDocumentFragment();
+        const warningContent = document.createElement('div');
+        warningContent.addClass('pwm-encryption-warning-content');
+        const warningIcon = warningContent.createSpan({ cls: 'pwm-encryption-warning-icon' });
+        setIcon(warningIcon, 'triangle-alert');
+        warningContent.createSpan({ text: PWM_TEXT.ENCRYPTION_PASSWORD_STORAGE_WARNING_DESC });
+        warningDescription.append(warningContent);
+
+        const warningSetting = new Setting(containerEl)
+          .setName(PWM_TEXT.ENCRYPTION_PASSWORD_STORAGE_WARNING_TITLE)
+          .setDesc(warningDescription);
+        warningSetting.settingEl.addClass('pwm-encryption-warning');
+      }
 
       if (this.plugin.pluginConfig.encryptionUnlockMode === 'interval') {
         new Setting(containerEl)

@@ -2,6 +2,8 @@ export function getLanguage() {
   return 'en';
 }
 
+export function setIcon(_element: HTMLElement, _icon: string) {}
+
 export class FuzzySuggestModal<T> {
   items: T[] = [];
 
