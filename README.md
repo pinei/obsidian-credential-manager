@@ -15,6 +15,7 @@ It uses a JSON-based data structure and provides a three-column management inter
 ## ✨ Features
 
 - 🔐 **Encrypted storage** – Supports local encryption of the entire credential vault. Unlock method and re-verification timing are configurable.
+- 🗂️ **Multiple credential types** – Manage logins, app registrations, API tokens, database credentials, certificates, SSH keys, cloud credentials, webhooks, personal IDs, payment cards, and generic secrets.
 - 📂 **Group management** – Create custom groups (default, website keys, personal profiles, etc.) for easy classification.
 - 🔍 **Quick search** – Real-time search by title, credential metadata, link, note, or group name.
 - 💾 **Backup & restore** – Export all data as a one-click JSON snapshot and restore anytime.
@@ -35,7 +36,7 @@ It uses a JSON-based data structure and provides a three-column management inter
 
 ### Local manual installation
 
-- Download the latest `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/credential-manager/` folder.
+- Download the latest `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/obsidian-credential-manager/` folder.
 - Restart Obsidian and enable the plugin.
 
 ## 🔒 Security Notes
