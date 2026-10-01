@@ -26,9 +26,7 @@ jobs:
               run: |
                   node -e 'const manifest = require("./manifest.json"); const versions = require("./versions.json"); if (process.env.RELEASE_TAG !== manifest.version || versions[manifest.version] !== manifest.minAppVersion) { console.error("Tag must match manifest version and versions.json must map it to minAppVersion"); process.exit(1); }'
             - name: Build plugin
-              run: |
-                  npm ci
-                  npm run build
+              run: npm ci --include=dev && npm run build
             - name: Generate artifact attestation
               uses: actions/attest@v4
               with:

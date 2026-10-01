@@ -1,7 +1,7 @@
 {
 	"id": "credential-manager",
 	"name": "Credential Manager",
-	"version": "1.1.1",
+	"version": "1.1.2",
 	"minAppVersion": "1.12.0",
 	"description": "A lightweight local credential manager with encryption, backup, trash, and import/export support.",
 	"author": "Pinei",
