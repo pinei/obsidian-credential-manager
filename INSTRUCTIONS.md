@@ -18,12 +18,12 @@ O workflow [release.yml](.github/workflows/release.yml) roda quando uma tag e en
 
 ## Criar um release
 
-1. Escolha uma versao SemVer, sem prefixo `v` (por exemplo, `1.1.2`). Atualize `minAppVersion` em `manifest.json` se a compatibilidade minima tiver mudado.
+1. Escolha uma versao SemVer, sem prefixo `v` (por exemplo, `1.1.3`). Atualize `minAppVersion` em `manifest.json` se a compatibilidade minima tiver mudado.
 
 2. Na raiz do repositorio, execute:
 
    ```bash
-   npm version 1.1.2 --no-git-tag-version
+   npm version 1.1.3 --no-git-tag-version
    npm test
    npm run build
    ```
@@ -34,15 +34,15 @@ O workflow [release.yml](.github/workflows/release.yml) roda quando uma tag e en
 
    ```bash
    git add package.json package-lock.json manifest.json versions.json
-   git commit -m "Release 1.1.2"
+   git commit -m "Release 1.1.3"
    git push origin HEAD
    ```
 
 4. Crie a tag **no commit publicado** e envie-a separadamente:
 
    ```bash
-   git tag -a 1.1.2 -m "1.1.2"
-   git push origin 1.1.2
+   git tag -a 1.1.3 -m "1.1.3"
+   git push origin 1.1.3
    ```
 
 5. Em **Actions** no GitHub, confira a execucao do workflow. Em **Releases**, abra o rascunho, confira os tres arquivos anexados, adicione as notas da versao e selecione **Publish release**. O envio da tag cria apenas o rascunho, nao publica o release automaticamente.

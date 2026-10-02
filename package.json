@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-credential-manager",
-	"version": "1.1.2",
+	"version": "1.1.3",
 	"description": "A lightweight local credential manager for Obsidian with encryption, backup, trash, and import/export support.",
 	"main": "main.js",
 	"type": "module",
